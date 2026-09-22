@@ -6,18 +6,22 @@ from discord.ext import commands
 
 from bot.config.settings import settings
 from bot.core.logger import logger
+from bot.database.engine import init_db
 
 
 class DiscordBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
-        intents.members = True           # لازم لـ Welcome, Invite tracking, Verification
-        intents.message_content = True   # لازم لـ Leveling من الرسائل و AutoMod
+        intents.members = True
+        intents.message_content = True
 
         super().__init__(command_prefix="!", intents=intents)
 
     async def setup_hook(self):
-        """يُستدعى تلقائيًا مرة واحدة قبل أن يتصل البوت — هنا نحمّل الـ Cogs ونزامن الأوامر."""
+        """يُستدعى تلقائيًا مرة واحدة قبل أن يتصل البوت — هنا نهيئ القاعدة ونحمّل الـ Cogs ونزامن الأوامر."""
+        await init_db()
+        logger.info("تم تهيئة قاعدة البيانات بنجاح.")
+
         await self.load_extension("bot.cogs.ping_cog")
         logger.info("تم تحميل جميع الـ Cogs بنجاح.")
 
