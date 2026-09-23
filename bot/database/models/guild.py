@@ -1,7 +1,10 @@
 """
-جدول guilds: إعدادات كل سيرفر (بديل عن hardcoded IDs، كما اتفقنا في Phase 0).
+جدول guilds: سجل لكل سيرفر يعمل فيه البوت.
+إعدادات السيرفر نفسها (الرومات، الرتب، XP...) في جدول guild_settings.
 """
-from sqlalchemy import BigInteger
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bot.database.engine import Base
@@ -10,10 +13,6 @@ from bot.database.engine import Base
 class Guild(Base):
     __tablename__ = "guilds"
 
-    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-
-    # هذه الأعمدة فارغة الآن (None) — سنملؤها في Phase 4 (Configuration)
-    verification_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    verification_voice_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    welcome_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    log_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # المعرّف يأتي من Discord، لذلك لا نريد ترقيمًا تلقائيًا
+    guild_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
