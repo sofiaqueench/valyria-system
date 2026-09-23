@@ -19,5 +19,7 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 
 async def init_db():
     """ينشئ كل الجداول المعرّفة في الـ Models، إذا لم تكن موجودة مسبقًا."""
+    from bot.database import models  # يضمن تسجيل كل الـ Models في Base.metadata قبل الإنشاء
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

@@ -23,6 +23,7 @@ class DiscordBot(commands.Bot):
         logger.info("تم تهيئة قاعدة البيانات بنجاح.")
 
         await self.load_extension("bot.cogs.ping_cog")
+        await self.load_extension("bot.cogs.config_cog")
         logger.info("تم تحميل جميع الـ Cogs بنجاح.")
 
         if settings.guild_id:
