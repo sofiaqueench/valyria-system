@@ -19,6 +19,7 @@ from bot.config.schema import (
     get_definition,
 )
 from bot.core.errors import ConfigError
+from bot.core.permissions import StaffLevel, requires_level
 from bot.services import config_service
 
 # نوع الروم المقبول لكل نوع إعداد
@@ -73,14 +74,13 @@ class ConfigCog(commands.Cog):
         name="config",
         description="إعدادات البوت لهذا السيرفر",
         guild_only=True,
-        default_permissions=discord.Permissions(administrator=True),
     )
 
     # ------------------------------------------------------------------ view
     @config.command(name="view", description="عرض إعدادات مجموعة معيّنة")
     @app_commands.describe(group="المجموعة التي تريد عرضها")
     @app_commands.choices(group=_GROUP_CHOICES)
-    @app_commands.checks.has_permissions(administrator=True)
+    @requires_level(StaffLevel.ADMIN)
     async def view(self, interaction: discord.Interaction, group: app_commands.Choice[str]):
         states = await config_service.list_settings(interaction.guild_id, group.value)
 
@@ -100,7 +100,7 @@ class ConfigCog(commands.Cog):
     # ----------------------------------------------------------- set-channel
     @config.command(name="set-channel", description="ضبط إعداد من نوع روم أو كاتيغوري")
     @app_commands.describe(key="اسم الإعداد", channel="الروم أو الكاتيغوري")
-    @app_commands.checks.has_permissions(administrator=True)
+    @requires_level(StaffLevel.ADMIN)
     async def set_channel(
         self, interaction: discord.Interaction, key: str, channel: discord.abc.GuildChannel
     ):
@@ -124,7 +124,7 @@ class ConfigCog(commands.Cog):
     # -------------------------------------------------------------- set-role
     @config.command(name="set-role", description="ضبط إعداد من نوع رتبة")
     @app_commands.describe(key="اسم الإعداد", role="الرتبة")
-    @app_commands.checks.has_permissions(administrator=True)
+    @requires_level(StaffLevel.ADMIN)
     async def set_role(self, interaction: discord.Interaction, key: str, role: discord.Role):
         definition = get_definition(key)
         if definition.kind is not Kind.ROLE:
@@ -144,7 +144,7 @@ class ConfigCog(commands.Cog):
     # ------------------------------------------------------------- set-value
     @config.command(name="set-value", description="ضبط إعداد رقمي أو نصي أو true/false")
     @app_commands.describe(key="اسم الإعداد", value="القيمة الجديدة")
-    @app_commands.checks.has_permissions(administrator=True)
+    @requires_level(StaffLevel.ADMIN)
     async def set_value(self, interaction: discord.Interaction, key: str, value: str):
         definition = get_definition(key)
         if definition.kind in ID_KINDS:
@@ -165,7 +165,7 @@ class ConfigCog(commands.Cog):
     # ----------------------------------------------------------------- reset
     @config.command(name="reset", description="إرجاع إعداد إلى قيمته الافتراضية")
     @app_commands.describe(key="اسم الإعداد")
-    @app_commands.checks.has_permissions(administrator=True)
+    @requires_level(StaffLevel.ADMIN)
     async def reset(self, interaction: discord.Interaction, key: str):
         definition = get_definition(key)
         existed = await config_service.reset_setting(interaction.guild_id, key)

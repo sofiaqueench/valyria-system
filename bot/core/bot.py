@@ -31,6 +31,7 @@ class DiscordBot(commands.Bot):
         await self.load_extension("bot.cogs.ping_cog")
         await self.load_extension("bot.cogs.config_cog")
         await self.load_extension("bot.cogs.log_events")
+        await self.load_extension("bot.cogs.permissions_cog")
         logger.info("تم تحميل جميع الـ Cogs بنجاح.")
 
         if settings.guild_id:

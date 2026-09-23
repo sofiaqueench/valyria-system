@@ -7,6 +7,7 @@ from discord import app_commands
 
 from bot.core.errors import BotError
 from bot.core.logger import logger
+from bot.core.permissions import InsufficientStaffLevel, level_label
 from bot.services.logging_service import log_error
 
 
@@ -18,6 +19,9 @@ async def handle_app_command_error(
 
     if isinstance(error, app_commands.MissingPermissions):
         message = "❌ ليست لديك الصلاحية لاستعمال هذا الأمر."
+    elif isinstance(error, InsufficientStaffLevel):
+        # يجب فحصها قبل CheckFailure العامة لأن InsufficientStaffLevel ترث منها
+        message = f"❌ هذا الأمر يتطلب مستوى **{level_label(error.required)}** أو أعلى."
     elif isinstance(error, app_commands.CommandOnCooldown):
         message = f"⏳ انتظر {error.retry_after:.0f} ثانية قبل استعمال هذا الأمر مجددًا."
     elif isinstance(error, app_commands.CheckFailure):
