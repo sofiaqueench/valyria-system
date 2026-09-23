@@ -2,6 +2,7 @@
 أوامر /config: عرض وتعديل إعدادات السيرفر (الرومات، الرتب، القيم...).
 كل الأوامر تعمل عبر config_service، والمفاتيح معرّفة في bot/config/schema.py.
 الأوامر للمسؤولين فقط حاليًا — سيُستبدل هذا بنظام Permissions في Phase 6.
+معالجة الأخطاء في bot/core/error_handler.py.
 """
 import discord
 from discord import app_commands
@@ -18,7 +19,6 @@ from bot.config.schema import (
     get_definition,
 )
 from bot.core.errors import ConfigError
-from bot.core.logger import logger
 from bot.services import config_service
 
 # نوع الروم المقبول لكل نوع إعداد
@@ -178,26 +178,6 @@ class ConfigCog(commands.Cog):
     @reset.autocomplete("key")
     async def reset_key_autocomplete(self, interaction: discord.Interaction, current: str):
         return _autocomplete_choices(set(Kind), current)
-
-    # ---------------------------------------------------------------- errors
-    async def cog_app_command_error(
-        self, interaction: discord.Interaction, error: app_commands.AppCommandError
-    ) -> None:
-        # الأخطاء الأصلية تأتي داخل CommandInvokeError، نفتحها لنرى السبب الحقيقي
-        original = getattr(error, "original", error)
-
-        if isinstance(error, app_commands.MissingPermissions):
-            message = "❌ هذا الأمر للمسؤولين (Administrator) فقط."
-        elif isinstance(original, ConfigError):
-            message = f"❌ {original}"
-        else:
-            logger.error("خطأ غير متوقع في أوامر /config", exc_info=error)
-            message = "❌ حدث خطأ غير متوقع، تم تسجيله في bot.log."
-
-        if interaction.response.is_done():
-            await interaction.followup.send(message, ephemeral=True)
-        else:
-            await interaction.response.send_message(message, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
