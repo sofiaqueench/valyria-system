@@ -261,8 +261,49 @@ class LogEventsCog(commands.Cog):
                 LogType.MEMBER, "✏️ Nickname Changed", user=after, staff=staff, fields=fields,
             ))
 
-    # ================================================================ TEST
-    @logs.command(name="test", description="إرسال رسالة تجريبية إلى كل رومات السجلات المضبوطة")
+    # ================================================================ VOICE STATE (Mute/Deafen)
+    @commands.Cog.listener()
+    async def on_voice_state_update(
+        self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState
+    ):
+        # server mute/deafen فقط (وليس self_mute/self_deaf التي يتحكم بها العضو بنفسه)
+        if before.mute != after.mute:
+            await self._log_voice_mod_change(
+                member, attr="mute", new_value=after.mute,
+                title="🔇 Server Muted" if after.mute else "🔊 Server Unmuted",
+            )
+        if before.deaf != after.deaf:
+            await self._log_voice_mod_change(
+                member, attr="deaf", new_value=after.deaf,
+                title="🔇 Server Deafened" if after.deaf else "🔊 Server Undeafened",
+            )
+
+    async def _log_voice_mod_change(
+        self, member: discord.Member, *, attr: str, new_value: bool, title: str
+    ) -> None:
+        guild = member.guild
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            guild,
+            discord.AuditLogAction.member_update,
+            member.id,
+            predicate=lambda entry: getattr(entry.after, attr, None) == new_value,
+        )
+
+        fields: list[tuple[str, str, bool]] = []
+        staff = None
+        if status == "found":
+            staff = executor
+        else:
+            # لا نخترع من قام بالفعل — نوضح أنه غير معروف
+            fields.append(("Actor", "Unknown / Unavailable", False))
+
+        await send_log(guild, LogEvent(
+            LogType.MEMBER, title, user=member, staff=staff, fields=fields,
+            ids={"User ID": member.id},
+        ))
+
+
     @app_commands.checks.has_permissions(administrator=True)
     async def test(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)  # الإرسال قد يأخذ أكثر من 3 ثوانٍ
