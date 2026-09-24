@@ -213,6 +213,8 @@ SETTING_LIST: list[SettingDef] = [
     _text("log_message", "logs", "سجل الرسائل (حذف/تعديل)"),
     _text("log_security", "logs", "سجل الأمان"),
     _text("log_bot", "logs", "سجل البوت"),
+    _text("log_channel", "logs", "سجل القنوات (إنشاء/حذف)"),
+    _text("log_role", "logs", "سجل الرتب (إنشاء/حذف/تعديل)"),
     _bool("message_log_include_content", "logs", "تسجيل محتوى الرسالة المحذوفة", True),
     _bool("message_log_ignore_bots", "logs", "تجاهل رسائل البوتات", True),
     _bool("message_log_use_audit_log", "logs", "محاولة معرفة من حذف الرسالة (Audit Log)", True),

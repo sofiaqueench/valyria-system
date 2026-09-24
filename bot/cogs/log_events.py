@@ -22,6 +22,8 @@ from bot.services.logging_service import (
     truncate,
 )
 
+VocalChannel = discord.VoiceChannel | discord.StageChannel
+
 MAX_CONTENT = 1000  # حقل الـ Embed لا يقبل أكثر من 1024 حرفًا
 AUDIT_DELAY = 1.0   # Discord قد يتأخر ثانية في كتابة Audit Log
 CONTENT_DISABLED = "(content logging is disabled in settings)"
@@ -261,6 +263,147 @@ class LogEventsCog(commands.Cog):
                 LogType.MEMBER, "✏️ Nickname Changed", user=after, staff=staff, fields=fields,
             ))
 
+    # =============================================================== CHANNELS
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            channel.guild, discord.AuditLogAction.channel_create, channel.id,
+        )
+
+        fields = [
+            ("Channel", channel.mention, True),
+            ("Type", self._describe_channel_type(channel), True),
+        ]
+        if channel.category is not None:
+            fields.append(("Category", channel.category.name, True))
+        if status != "found":
+            fields.append(("Created by", "Unknown — no matching Audit Log entry (or no permission).", False))
+
+        await send_log(channel.guild, LogEvent(
+            LogType.CHANNEL, "➕ Channel Created",
+            staff=executor if status == "found" else None,
+            fields=fields, ids={"Channel ID": channel.id},
+        ))
+
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            channel.guild, discord.AuditLogAction.channel_delete, channel.id,
+        )
+
+        fields = [
+            ("Channel", f"`#{channel.name}`", True),
+            ("Type", self._describe_channel_type(channel), True),
+        ]
+        if channel.category is not None:
+            fields.append(("Category", channel.category.name, True))
+        if status != "found":
+            fields.append(("Deleted by", "Unknown — no matching Audit Log entry (or no permission).", False))
+
+        await send_log(channel.guild, LogEvent(
+            LogType.CHANNEL, "🗑️ Channel Deleted",
+            staff=executor if status == "found" else None,
+            fields=fields, ids={"Channel ID": channel.id},
+        ))
+
+    @staticmethod
+    def _describe_channel_type(channel: discord.abc.GuildChannel) -> str:
+        return channel.type.name.replace("_", " ").title()
+
+    # =================================================================== ROLES
+    @commands.Cog.listener()
+    async def on_guild_role_create(self, role: discord.Role):
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            role.guild, discord.AuditLogAction.role_create, role.id,
+        )
+
+        fields = [
+            ("Role", role.mention, True),
+            ("Color", self._describe_color(role.color), True),
+            ("Hoisted", "Yes" if role.hoist else "No", True),
+            ("Mentionable", "Yes" if role.mentionable else "No", True),
+        ]
+        if status != "found":
+            fields.append(("Created by", "Unknown — no matching Audit Log entry (or no permission).", False))
+
+        await send_log(role.guild, LogEvent(
+            LogType.ROLE, "➕ Role Created",
+            staff=executor if status == "found" else None,
+            fields=fields, ids={"Role ID": role.id},
+        ))
+
+    @commands.Cog.listener()
+    async def on_guild_role_delete(self, role: discord.Role):
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            role.guild, discord.AuditLogAction.role_delete, role.id,
+        )
+
+        fields = [
+            ("Role", f"`@{role.name}`", True),
+            ("Color", self._describe_color(role.color), True),
+            ("Members had it", str(len(role.members)), True),
+        ]
+        if status != "found":
+            fields.append(("Deleted by", "Unknown — no matching Audit Log entry (or no permission).", False))
+
+        await send_log(role.guild, LogEvent(
+            LogType.ROLE, "🗑️ Role Deleted",
+            staff=executor if status == "found" else None,
+            fields=fields, ids={"Role ID": role.id},
+        ))
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
+        # نتجاهل تغيّر الترتيب (position) فقط — يحدث بكثرة عند سحب/إفلات الرتب في الإعدادات
+        # ولا يهم أحدًا في الـ Logs، وقد يطلق هذا الحدث لعشرات الرتب دفعة واحدة.
+        fields: list[tuple[str, str, bool]] = []
+
+        if before.name != after.name:
+            fields.append(("Name", f"`{before.name}` → `{after.name}`", False))
+        if before.color != after.color:
+            fields.append((
+                "Color",
+                f"{self._describe_color(before.color)} → {self._describe_color(after.color)}",
+                False,
+            ))
+        if before.hoist != after.hoist:
+            fields.append(("Hoisted", f"{before.hoist} → {after.hoist}", True))
+        if before.mentionable != after.mentionable:
+            fields.append(("Mentionable", f"{before.mentionable} → {after.mentionable}", True))
+        if before.icon != after.icon:
+            fields.append(("Icon", "Changed", True))
+        if before.permissions != after.permissions:
+            added = [p for p, v in after.permissions if v and not getattr(before.permissions, p)]
+            removed = [p for p, v in before.permissions if v and not getattr(after.permissions, p)]
+            if added:
+                fields.append(("Permissions added", ", ".join(added), False))
+            if removed:
+                fields.append(("Permissions removed", ", ".join(removed), False))
+
+        if not fields:
+            return  # لا تغيير مهم (على الأغلب position فقط) — لا نرسل Log فارغًا
+
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            after.guild, discord.AuditLogAction.role_update, after.id,
+        )
+        if status != "found":
+            fields.append(("Changed by", "Unknown — no matching Audit Log entry (or no permission).", False))
+
+        await send_log(after.guild, LogEvent(
+            LogType.ROLE, "✏️ Role Updated",
+            staff=executor if status == "found" else None,
+            fields=fields, ids={"Role ID": after.id},
+        ))
+
+    @staticmethod
+    def _describe_color(color: discord.Color) -> str:
+        return "Default (none)" if color.value == 0 else f"#{color.value:06X}"
+
     # ================================================================ VOICE STATE (Mute/Deafen)
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -277,6 +420,30 @@ class LogEventsCog(commands.Cog):
                 member, attr="deaf", new_value=after.deaf,
                 title="🔇 Server Deafened" if after.deaf else "🔊 Server Undeafened",
             )
+
+        # دخول/خروج/انتقال بين رومات صوتية — لا علاقة له بالـ mute/deafen أعلاه
+        if before.channel != after.channel:
+            await self._log_voice_channel_change(member, before.channel, after.channel)
+
+    async def _log_voice_channel_change(
+        self, member: discord.Member, before_channel: VocalChannel | None, after_channel: VocalChannel | None,
+    ) -> None:
+        if before_channel is None:
+            title = "🔊 Joined Voice Channel"
+            fields = [("Channel", after_channel.mention, True)]
+        elif after_channel is None:
+            title = "🔇 Left Voice Channel"
+            fields = [("Channel", before_channel.mention, True)]
+        else:
+            title = "🔀 Switched Voice Channel"
+            fields = [
+                ("From", before_channel.mention, True),
+                ("To", after_channel.mention, True),
+            ]
+
+        await send_log(member.guild, LogEvent(
+            LogType.VOICE, title, user=member, fields=fields, ids={"User ID": member.id},
+        ))
 
     async def _log_voice_mod_change(
         self, member: discord.Member, *, attr: str, new_value: bool, title: str
@@ -304,6 +471,7 @@ class LogEventsCog(commands.Cog):
         ))
 
 
+    @logs.command(name="test", description="يرسل رسالة تجريبية لكل رومات السجلات المضبوطة")
     @app_commands.checks.has_permissions(administrator=True)
     async def test(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)  # الإرسال قد يأخذ أكثر من 3 ثوانٍ

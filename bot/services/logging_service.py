@@ -41,6 +41,8 @@ class LogType(str, Enum):
     MESSAGE = "log_message"
     SECURITY = "log_security"
     BOT = "log_bot"
+    CHANNEL = "log_channel"
+    ROLE = "log_role"
 
 
 # نتأكد عند التشغيل أن كل نوع له إعداد فعلي (يمنع الأخطاء الإملائية)
@@ -59,6 +61,8 @@ _COLORS = {
     LogType.MESSAGE: 0x95A5A6,
     LogType.SECURITY: 0xE74C3C,
     LogType.BOT: 0x34495E,
+    LogType.CHANNEL: 0x16A085,
+    LogType.ROLE: 0x8E44AD,
 }
 
 
