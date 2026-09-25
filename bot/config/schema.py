@@ -193,6 +193,12 @@ SETTING_LIST: list[SettingDef] = [
     _text("verification_staff_channel", "verification", "روم إشعارات الطاقم للتحقق"),
     _role("role_verified", "verification", "رتبة Verified"),
     _role("role_unverified", "verification", "رتبة Unverified"),
+    _text("verification_panel_channel", "verification", "Verification panel channel"),
+    _role("role_verification_team", "verification", "Verification Team role"),
+    _role("role_male", "verification", "Male role"),
+    _role("role_female", "verification", "Female role"),
+    _bool("verification_dm_enabled", "verification", "DM Verification Team on voice requests", True),
+    _int("verification_request_cooldown", "verification", "Verification DM cooldown seconds", 300, 30, 3600),
 
     # ---- الترحيب ----
     _bool("welcome_enabled", "welcome", "تفعيل رسالة الترحيب", True),
