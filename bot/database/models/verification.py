@@ -27,5 +27,5 @@ class StaffXPHistory(Base):
     action: Mapped[str] = mapped_column(String(40), nullable=False)
     xp_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     target_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    verification_record_id: Mapped[int] = mapped_column(Integer, ForeignKey("verification_records.id", ondelete="CASCADE"), nullable=False)
+    verification_record_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("verification_records.id", ondelete="CASCADE"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

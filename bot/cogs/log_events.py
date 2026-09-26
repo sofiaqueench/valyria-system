@@ -200,6 +200,10 @@ class LogEventsCog(commands.Cog):
     # =============================================================== MEMBERS
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
+        # Keep one existing join handler for invite attribution and member logging.
+        invite_cog = self.bot.get_cog("InviteCog")
+        if invite_cog is not None:
+            await invite_cog.process_member_join(member)
         await send_log(member.guild, LogEvent(
             LogType.MEMBER, "📥 Member Joined",
             user=member,

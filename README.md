@@ -71,3 +71,38 @@ Supported text placeholders: `{user}`, `{mention}`, `{username}`, `{display_name
 - [ ] Embed title, fields, footer, color, and timestamp look correct in the configured channel.
 - [ ] Verification remains unaffected and new members still receive Unverified.
 - [ ] Existing systems remain unaffected.
+
+## Phase 9 — Invite Tracking + Staff XP
+
+Invite attribution is integrated into the existing `LogEventsCog.on_member_join` flow; no additional member-join listener is added. The bot builds a per-guild invite cache on startup/reconnect and refreshes it when invites are created or deleted. Because Discord does not provide a definitive invite-used gateway event, the bot compares invite use counts when a member joins. It attributes a join only when exactly one cached invite increases by exactly one; ambiguous or unavailable results are stored without guessing.
+
+### Setup and configuration
+1. Enable Server Members Intent for the bot in the Discord Developer Portal. The bot also enables Discord.py's invite intent in code.
+2. Give the bot Manage Server (needed to read guild invites), plus its normal role/channel access.
+3. Set the invite log channel with `/config set-channel` → `log_invite`.
+4. Set invite Staff XP with `/config set-value` → `staff_xp_invite`. Default: `1` XP; `0` disables awards.
+5. Staff eligibility uses the existing Permissions system: members at Staff level or above qualify. The inviter receives XP; the joining member is recorded as the target.
+6. Staff can run `/invites` for their own statistics or `/invites member:@Member` to inspect another member. The command reports unique attributed joins, invite XP, and the most-used invite codes.
+
+The first observed join for a member in a guild is stored once. Rejoining does not replace that original attribution or grant XP again, including when the first join could not be attributed. Invite attribution and its XP ledger row are committed together. XP history continues in the existing `staff_xp_history` table (`action=invite`); no second XP system is introduced. This project currently stores Staff XP ledger entries but does not implement a level or promotion calculation.
+
+### Phase 9 verification checklist
+- [ ] After startup, use a staff-created invite and verify the correct inviter, invite code, and usage transition are logged.
+- [ ] With `staff_xp_invite=5`, each first-time member through an eligible staff invite adds exactly 5 XP to that inviter.
+- [ ] A non-staff inviter is attributed but receives no Staff XP.
+- [ ] Ambiguous, expired/deleted, cold-cache, or unavailable invite data is not guessed and grants no XP.
+- [ ] Bot joins, self-invites, unknown creators, and repeated member joins grant no invite XP.
+- [ ] Two guilds keep separate invite caches and database statistics.
+- [ ] Restart the bot and confirm the invite cache is rebuilt.
+- [ ] `/invites` is limited to Staff and above; invite logs go through the configured `log_invite` channel.
+- [ ] Verification, Welcome, and other existing member-join behavior still run.
+
+### Local test
+From the project directory, activate the existing environment and start the bot (startup automatically runs Alembic migrations):
+
+```powershell
+.\venv\Scripts\activate
+python -m bot.main
+```
+
+Then create a test invite from a configured staff account, join with a separate test account, and run `/invites`. Discord must allow the bot to read invites; otherwise joins are recorded as unavailable and receive no invite XP.

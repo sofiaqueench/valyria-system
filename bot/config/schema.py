@@ -252,6 +252,7 @@ SETTING_LIST: list[SettingDef] = [
 
     # ---- XP الطاقم ----
     _int("staff_xp_verify", "staff_xp", "XP الطاقم عند التحقق من عضو", 10, 0, 1000),
+    _int("staff_xp_invite", "staff_xp", "XP الطاقم عند دعوة عضو جديد", 1, 0, 1000),
     _int("staff_xp_ticket_close", "staff_xp", "XP الطاقم عند إغلاق تذكرة", 20, 0, 1000),
     _int("staff_xp_application_review", "staff_xp", "XP الطاقم عند مراجعة طلب", 15, 0, 1000),
     _int("staff_xp_cooldown", "staff_xp", "ثواني الانتظار بين إجراءين يعطيان XP", 30, 0, 3600),
