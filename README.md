@@ -46,3 +46,28 @@ The reviewer selects a gender and answers the staff-elsewhere question. Yes requ
 - Check /verification status and /logs test.
 
 Common setup issues: unset role/channel IDs, bot role below a configured role, disabled Server Members Intent, reviewers blocking DMs, or missing log_verification.
+
+## Phase 8 — Welcome Card
+
+The Welcome Cog posts a Discord Embed when a member joins. It uses the member's live avatar, the server's current banner and icon when available, and per-guild configuration through the existing `/config` commands. Missing banners use the optional fallback image; unavailable custom emojis use Unicode fallbacks. The Verification Cog remains responsible for assigning Unverified.
+
+### Setup
+1. Give the bot View Channel, Send Messages and Embed Links permissions in the welcome channel.
+2. Set `welcome_channel` using `/config set-channel` and choose the welcome text channel.
+3. Ensure `welcome_enabled` is true using `/config set-value` if it was changed.
+4. Optional: customize `welcome_message`, `welcome_embed_title`, `welcome_embed_footer`, `welcome_embed_color`, and visual toggles with `/config set-value`.
+5. Optional: configure a custom emoji with `/config set-value` using `welcome_emoji_welcome`, `welcome_emoji_member`, `welcome_emoji_server`, `welcome_emoji_rules`, or `welcome_emoji_verification`. Use Discord syntax such as `<:welcome:123456789012345678>` (or animated `<a:name:id>`). The emoji must belong to this server. Reset a value with `/config reset`.
+6. Optional: set `welcome_fallback_image_url` to an HTTPS image URL for servers without a banner. Use `/config reset` to remove it.
+7. Set the Verification channel with `verification_channel` if you want its mention included in the card. Existing verification roles and panel configuration are unchanged.
+
+Supported text placeholders: `{user}`, `{mention}`, `{username}`, `{display_name}`, `{user_id}`, `{server}`, `{server_id}`, `{member_count}`, `{created_at}`, `{joined_at}`, and `{inviter}` (currently `Unknown`, since this project has no invite attribution system). Emoji placeholders: `{WELCOME_EMOJI_WELCOME}`, `{WELCOME_EMOJI_MEMBER}`, `{WELCOME_EMOJI_SERVER}`, `{WELCOME_EMOJI_RULES}`, and `{WELCOME_EMOJI_VERIFICATION}`. The existing `welcome_message` setting is the embed description and remains supported.
+
+### Phase 8 verification checklist
+- [ ] A configured custom Welcome emoji displays; multiple configured emojis display together.
+- [ ] Missing, malformed, deleted, or another-server emoji uses a fallback without crashing.
+- [ ] A server banner displays; no banner uses the configured fallback image or omits the image.
+- [ ] Member custom, default, and animated avatars render; server icon is shown when enabled.
+- [ ] Member count, identity, dates, and all supported placeholders are correct.
+- [ ] Embed title, fields, footer, color, and timestamp look correct in the configured channel.
+- [ ] Verification remains unaffected and new members still receive Unverified.
+- [ ] Existing systems remain unaffected.
