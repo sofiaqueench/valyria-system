@@ -243,12 +243,14 @@ SETTING_LIST: list[SettingDef] = [
     _int("message_xp_max", "xp", "أكبر XP للرسالة", 25, 1, 1000),
     _int("message_xp_cooldown", "xp", "ثواني الانتظار بين رسالتين تعطيان XP", 60, 0, 3600),
     _int("voice_xp_interval", "xp", "كل كم ثانية يُحتسب XP الصوت", 60, 30, 3600),
-    _int("voice_xp_amount", "xp", "XP الصوت في كل فترة", 10, 1, 1000),
-    _int("voice_xp_min_members", "xp", "أقل عدد أعضاء في الروم لاحتساب XP الصوت", 2, 1, 99),
+    _int("voice_xp_amount", "xp", "XP الصوت في كل فترة (0 = تعطيل)", 10, 0, 1000),
     _bool("voice_xp_ignore_deafened", "xp", "لا XP للعضو الذي أغلق السماعة (AFK)", True),
     _int("invite_xp", "xp", "XP لصاحب الدعوة", 50, 0, 10000),
     _bool("level_up_enabled", "xp", "إرسال رسالة عند رفع المستوى", True),
     _text("level_up_channel", "xp", "روم رسائل المستوى (فارغ = نفس روم الرسالة)"),
+    SettingDef("level_roles", Kind.STR, "xp", "أدوار مستويات الأعضاء؛ تُدار عبر /config level-role", "{}"),
+    SettingDef("level_up_banner", Kind.STR, "xp", "رابط صورة إعلان المستوى", None),
+    SettingDef("level_up_emoji", Kind.STR, "xp", "إيموجي إعلان المستوى المخصص", None),
 
     # ---- XP الطاقم ----
     _int("staff_xp_verify", "staff_xp", "XP الطاقم عند التحقق من عضو", 10, 0, 1000),

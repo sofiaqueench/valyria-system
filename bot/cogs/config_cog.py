@@ -4,6 +4,8 @@
 الأوامر للمسؤولين فقط حاليًا — سيُستبدل هذا بنظام Permissions في Phase 6.
 معالجة الأخطاء في bot/core/error_handler.py.
 """
+import json
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -21,6 +23,8 @@ from bot.config.schema import (
 from bot.core.errors import ConfigError
 from bot.core.permissions import StaffLevel, requires_level
 from bot.services import config_service
+from bot.services.level_progression_service import get_level_role_mapping
+from bot.services.logging_service import LogEvent, LogType, send_log
 
 # نوع الروم المقبول لكل نوع إعداد
 _CHANNEL_CLASSES = {
@@ -35,6 +39,11 @@ _CHANNEL_LABELS = {
 }
 
 _GROUP_CHOICES = [app_commands.Choice(name=label, value=key) for key, label in GROUPS.items()]
+_LEVELING_SETTINGS = {
+    "message_xp_min", "message_xp_max", "message_xp_cooldown", "voice_xp_interval",
+    "voice_xp_amount", "voice_xp_ignore_deafened", "level_up_enabled", "level_up_banner",
+    "level_up_emoji",
+}
 
 
 def format_value(definition: SettingDef, value: int | bool | str | None) -> str:
@@ -56,6 +65,8 @@ def _autocomplete_choices(kinds: frozenset[Kind] | set[Kind], current: str) -> l
     choices = []
     for definition in SETTINGS.values():
         if definition.kind not in kinds:
+            continue
+        if definition.key == "level_roles":  # Use /config level-role to preserve the mapping.
             continue
         if current and current not in definition.key and current not in definition.description:
             continue
@@ -115,6 +126,11 @@ class ConfigCog(commands.Cog):
         await config_service.set_setting(
             interaction.guild_id, key, channel.id, updated_by=interaction.user.id
         )
+        if key == "level_up_channel":
+            await send_log(interaction.guild, LogEvent(
+                LogType.XP, "⚙️ Level-Up Channel Configured", staff=interaction.user,
+                fields=[("Channel", channel.mention, True)],
+            ))
         await interaction.response.send_message(f"✅ تم ضبط `{key}` على {channel.mention}", ephemeral=True)
 
     @set_channel.autocomplete("key")
@@ -146,6 +162,8 @@ class ConfigCog(commands.Cog):
     @app_commands.describe(key="اسم الإعداد", value="القيمة الجديدة")
     @requires_level(StaffLevel.ADMIN)
     async def set_value(self, interaction: discord.Interaction, key: str, value: str):
+        if key == "level_roles":
+            raise ConfigError("Use `/config level-role` to manage Level Roles safely.")
         definition = get_definition(key)
         if definition.kind in ID_KINDS:
             raise ConfigError(f"«{key}» إعداد روم/رتبة. استعمل /config set-channel أو /config set-role.")
@@ -154,6 +172,11 @@ class ConfigCog(commands.Cog):
         saved = await config_service.set_setting(
             interaction.guild_id, key, parsed, updated_by=interaction.user.id
         )
+        if key in _LEVELING_SETTINGS:
+            await send_log(interaction.guild, LogEvent(
+                LogType.XP, "⚙️ Member Leveling Setting Changed", staff=interaction.user,
+                fields=[("Setting", key, True), ("Value", str(saved)[:900], False)],
+            ))
         await interaction.response.send_message(
             f"✅ تم ضبط `{key}` على {format_value(definition, saved)}", ephemeral=True
         )
@@ -169,11 +192,60 @@ class ConfigCog(commands.Cog):
     async def reset(self, interaction: discord.Interaction, key: str):
         definition = get_definition(key)
         existed = await config_service.reset_setting(interaction.guild_id, key)
+        if existed and (key in _LEVELING_SETTINGS or key in {"level_roles", "level_up_channel"}):
+            await send_log(interaction.guild, LogEvent(
+                LogType.XP, "⚙️ Member Leveling Setting Reset", staff=interaction.user,
+                fields=[("Setting", key, True), ("Default", str(definition.default)[:900], False)],
+            ))
         if existed:
             message = f"✅ تمت إعادة `{key}` إلى الافتراضي: {format_value(definition, definition.default)}"
         else:
             message = f"ℹ️ `{key}` على القيمة الافتراضية أصلًا."
         await interaction.response.send_message(message, ephemeral=True)
+
+    # ------------------------------------------------------------ level-role
+    @config.command(name="level-role", description="Configure or remove a Member Level role milestone")
+    @app_commands.describe(level="Level milestone", role="Role for that milestone; omit to remove it")
+    @requires_level(StaffLevel.ADMIN)
+    async def level_role(
+        self,
+        interaction: discord.Interaction,
+        level: app_commands.Range[int, 1, 1_000_000],
+        role: discord.Role | None = None,
+    ):
+        mapping = await get_level_role_mapping(interaction.guild_id)
+        previous_role_id = mapping.get(level)
+        if role is None:
+            if previous_role_id is None:
+                return await interaction.response.send_message(f"No Level Role is configured for Level {level}.", ephemeral=True)
+            del mapping[level]
+            result_text = f"Removed the Level Role mapping for Level {level}."
+        else:
+            if role.is_default():
+                raise ConfigError("@everyone cannot be a Level Role.")
+            if level not in mapping and len(mapping) >= 8:
+                raise ConfigError("At most 8 Level Role milestones can be configured.")
+            if any(existing_level != level and role_id == role.id for existing_level, role_id in mapping.items()):
+                raise ConfigError("Each Level Role must be unique; this role is already assigned to another level.")
+            mapping[level] = role.id
+            result_text = f"Level {level} now uses {role.mention}."
+            bot_member = interaction.guild.me
+            if (
+                bot_member is None
+                or not bot_member.guild_permissions.manage_roles
+                or bot_member.top_role <= role
+            ):
+                result_text += " ⚠️ The bot currently cannot manage this role; grant Manage Roles and move its highest role above it."
+
+        stored = json.dumps({str(key): mapping[key] for key in sorted(mapping)}, separators=(",", ":"))
+        await config_service.set_setting(
+            interaction.guild_id, "level_roles", stored, updated_by=interaction.user.id
+        )
+        await send_log(interaction.guild, LogEvent(
+            LogType.XP, "⚙️ Level Role Configuration Changed", staff=interaction.user,
+            fields=[("Level", str(level), True), ("Role", role.mention if role else "Removed", True)],
+        ))
+        await interaction.response.send_message(f"✅ {result_text}", ephemeral=True)
 
     @reset.autocomplete("key")
     async def reset_key_autocomplete(self, interaction: discord.Interaction, current: str):

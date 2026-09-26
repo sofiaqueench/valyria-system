@@ -9,6 +9,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from bot.core.logger import logger
 from bot.services.config_service import get_setting
 from bot.services.logging_service import (
     LogEvent,
@@ -413,6 +414,14 @@ class LogEventsCog(commands.Cog):
     async def on_voice_state_update(
         self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState
     ):
+        # Reuse this existing voice-state event for Member Voice XP tracking.
+        leveling_cog = self.bot.get_cog("MemberLevelingCog")
+        if leveling_cog is not None:
+            try:
+                await leveling_cog.process_voice_state_update(member, before, after)
+            except Exception:
+                logger.exception("Could not update Voice XP session for member %s.", member.id)
+
         # server mute/deafen فقط (وليس self_mute/self_deaf التي يتحكم بها العضو بنفسه)
         if before.mute != after.mute:
             await self._log_voice_mod_change(

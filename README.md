@@ -106,3 +106,31 @@ python -m bot.main
 ```
 
 Then create a test invite from a configured staff account, join with a separate test account, and run `/invites`. Discord must allow the bot to read invites; otherwise joins are recorded as unavailable and receive no invite XP.
+
+## Phase 10 — Member XP and Leveling
+
+Normal Member XP is stored in the separate `member_xp` table. It is guild-scoped and is never read from or written to `staff_xp_history`. Levels are derived as `total_xp // 100`; XP is not capped at Level 200. Message and Voice XP both call the same Member XP service.
+
+### Configuration and commands
+1. Message rewards reuse `message_xp_min` / `message_xp_max` (defaults 15–25 XP, randomly selected) and `message_xp_cooldown` (default 60 seconds per member per guild). These settings are in `/config view` → XP.
+2. Voice rewards reuse `voice_xp_amount` (default 10 XP; `0` disables Voice XP) and `voice_xp_interval` (default 60 seconds). Any eligible normal, Stage, or temporary voice channel counts, including a channel with only one member. Jail Voice, Verification Voice, the server AFK channel, and deafened members (when `voice_xp_ignore_deafened` is enabled) do not earn Voice XP.
+3. Create your Discord roles, then configure up to eight milestones with `/config level-role level:10 role:@Level10` (repeat for 30, 50, 70, 90, 120, 150, 200 or your chosen levels). Omit the role parameter to remove that level mapping. The bot creates no roles.
+4. Set the announcement room with `/config set-channel key:level_up_channel channel:#level-up`. If unset, text XP level-ups use the message's channel; Voice level-ups need the configured channel.
+5. Optional appearance settings: `/config set-value key:level_up_banner value:<HTTPS image URL>` and `/config set-value key:level_up_emoji value:<:emoji:ID>`. Reset either with `/config reset`.
+6. Members use `/level` or `/level user:@Member`; `/leaderboard` shows the top 10. Administrators can use `/member-xp add`, `/member-xp remove`, and `/member-xp set`; manual changes follow the same level and role processing.
+
+At a configured milestone the member receives the highest applicable configured Level Role, and only other roles managed by this Level Role mapping are removed. XP jumps across several milestones result in one role update and one level-up announcement. Beyond Level 200, the Level 200 role remains the highest mapped role. The bot needs Manage Roles and a role above the configured Level Roles. Missing/deleted roles and hierarchy failures are logged; unrelated member roles are never removed.
+
+Voice sessions rebuild from currently connected members after startup/reconnect. Time while the bot is offline is not credited. Tracking uses elapsed eligible time and a periodic task; alone in voice is allowed. The existing `voice_xp_min_members` placeholder was removed because it conflicts with solo voice XP.
+
+### Phase 10 verification checklist
+- [ ] A valid user message earns a configured random amount in range; bot, webhook, system, and empty messages do not.
+- [ ] Message cooldown persists through restart and is isolated per member and guild.
+- [ ] Voice XP accrues after eligible time, stops on leave, and combines with message XP in one total.
+- [ ] Alone in normal/temporary voice still earns XP; Jail, Verification, AFK, and configured deafened exclusions do not.
+- [ ] 99→100 XP becomes Level 1; 3250 XP displays Level 32 with 50 XP toward Level 33.
+- [ ] Configured Level Roles replace only other configured Level Roles; multiple crossed milestones resolve to the highest reached one.
+- [ ] Level 200 role remains at Level 201+; deleted roles, missing permissions, invalid banner, and invalid emoji do not crash XP awards.
+- [ ] `/level`, `/leaderboard`, `/member-xp`, and `/config level-role` permissions and results are correct.
+- [ ] Member XP and Staff XP remain independent; invite XP does not affect Member XP.
+- [ ] Restart retains Member XP and starts fresh Voice tracking without crediting offline time.
