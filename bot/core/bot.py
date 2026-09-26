@@ -33,6 +33,7 @@ class DiscordBot(commands.Bot):
         await self.load_extension("bot.cogs.config_cog")
         await self.load_extension("bot.cogs.invite_cog")
         await self.load_extension("bot.cogs.member_leveling_cog")
+        await self.load_extension("bot.cogs.permanent_voice_cog")
         await self.load_extension("bot.cogs.log_events")
         await self.load_extension("bot.cogs.permissions_cog")
         await self.load_extension("bot.cogs.verification_cog")

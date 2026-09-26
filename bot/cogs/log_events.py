@@ -293,6 +293,12 @@ class LogEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        leveling_cog = self.bot.get_cog("MemberLevelingCog")
+        if leveling_cog is not None:
+            try:
+                await leveling_cog.process_voice_channel_delete(channel)
+            except Exception:
+                logger.exception("Could not clean Voice XP sessions for deleted channel %s.", channel.id)
         await asyncio.sleep(AUDIT_DELAY)
         executor, status = await find_audit_executor(
             channel.guild, discord.AuditLogAction.channel_delete, channel.id,

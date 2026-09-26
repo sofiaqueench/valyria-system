@@ -134,3 +134,15 @@ Voice sessions rebuild from currently connected members after startup/reconnect.
 - [ ] `/level`, `/leaderboard`, `/member-xp`, and `/config level-role` permissions and results are correct.
 - [ ] Member XP and Staff XP remain independent; invite XP does not affect Member XP.
 - [ ] Restart retains Member XP and starts fresh Voice tracking without crediting offline time.
+
+## Phase 11 — Voice XP expansion and Permanent Voice
+
+Phase 11 extends the Phase 10 Member XP tracker; it adds no XP table, voice-level system, or voice XP event listener. Eligible Voice and Stage channels are discovered from member voice state, so dynamically created Temp Voice channels work even when a member is alone. Configured Jail Voice, Verification Voice, AFK and (optionally) deafened states remain excluded. Completed intervals and leftover eligible seconds are preserved when a member leaves or moves into an excluded channel. A bot restart starts active sessions from the reconnect time and never awards downtime.
+
+### Permanent Voice setup
+1. Install the updated dependencies with `pip install -r requirements.txt`. The `discord.py[voice]` extra installs discord.py's voice support dependencies.
+2. Give the bot View Channel and Connect in the chosen channel. Speak is not needed: the bot connects self-deafened.
+3. Run `/config permanent-voice channel:#Valyria-Radio` to set the guild's channel. Run `/config view group:voice` to inspect it. Run `/config permanent-voice` or `/config reset key:permanent_voice_channel` to clear it.
+4. Start/restart the bot. It connects on Ready; a centralized maintenance loop handles disconnections with exponential backoff up to 15 minutes. Invalid channel/permission settings are logged once until changed and rechecked periodically.
+
+Permanent Voice is per guild and reuses the project's settings registry and central Voice log. It does not require Speak permission. Connection, restart, and actual Discord voice-gateway behavior must be checked in a live server; local mocked tests cannot establish Discord connectivity.

@@ -131,6 +131,15 @@ class ConfigCog(commands.Cog):
                 LogType.XP, "⚙️ Level-Up Channel Configured", staff=interaction.user,
                 fields=[("Channel", channel.mention, True)],
             ))
+        if key == "permanent_voice_channel":
+            await send_log(interaction.guild, LogEvent(
+                LogType.VOICE, "⚙️ Permanent Voice Configuration Changed", staff=interaction.user,
+                fields=[("Channel", channel.mention, True)],
+            ))
+        if key == "permanent_voice_channel":
+            voice_cog = self.bot.get_cog("PermanentVoiceCog")
+            if voice_cog is not None:
+                voice_cog.request_reconnect(interaction.guild)
         await interaction.response.send_message(f"✅ تم ضبط `{key}` على {channel.mention}", ephemeral=True)
 
     @set_channel.autocomplete("key")
@@ -192,6 +201,15 @@ class ConfigCog(commands.Cog):
     async def reset(self, interaction: discord.Interaction, key: str):
         definition = get_definition(key)
         existed = await config_service.reset_setting(interaction.guild_id, key)
+        if key == "permanent_voice_channel":
+            if existed:
+                await send_log(interaction.guild, LogEvent(
+                    LogType.VOICE, "⚙️ Permanent Voice Configuration Reset", staff=interaction.user,
+                    fields=[("Channel", "Cleared", True)],
+                ))
+            voice_cog = self.bot.get_cog("PermanentVoiceCog")
+            if voice_cog is not None:
+                voice_cog.request_reconnect(interaction.guild)
         if existed and (key in _LEVELING_SETTINGS or key in {"level_roles", "level_up_channel"}):
             await send_log(interaction.guild, LogEvent(
                 LogType.XP, "⚙️ Member Leveling Setting Reset", staff=interaction.user,
@@ -201,6 +219,41 @@ class ConfigCog(commands.Cog):
             message = f"✅ تمت إعادة `{key}` إلى الافتراضي: {format_value(definition, definition.default)}"
         else:
             message = f"ℹ️ `{key}` على القيمة الافتراضية أصلًا."
+        await interaction.response.send_message(message, ephemeral=True)
+
+    # ------------------------------------------------------- permanent voice
+    @config.command(name="permanent-voice", description="Set or clear the bot's permanent voice channel")
+    @app_commands.describe(channel="Voice channel; omit to clear the configuration")
+    @requires_level(StaffLevel.ADMIN)
+    async def permanent_voice(
+        self, interaction: discord.Interaction, channel: discord.VoiceChannel | None = None
+    ):
+        if channel is None:
+            existed = await config_service.reset_setting(interaction.guild_id, "permanent_voice_channel")
+            message = "✅ Permanent Voice configuration cleared." if existed else "ℹ️ No Permanent Voice channel was configured."
+            channel_text = "Cleared"
+        else:
+            await config_service.set_setting(
+                interaction.guild_id, "permanent_voice_channel", channel.id,
+                updated_by=interaction.user.id,
+            )
+            message = f"✅ Permanent Voice channel set to {channel.mention}."
+            bot_member = interaction.guild.me
+            if bot_member is None:
+                message += " ⚠️ The bot's guild member is unavailable; it will validate permissions after reconnecting."
+            else:
+                permissions = channel.permissions_for(bot_member)
+                if not permissions.view_channel or not permissions.connect:
+                    message += " ⚠️ Grant the bot View Channel and Connect in that channel. Speak is not required."
+            channel_text = channel.mention
+
+        await send_log(interaction.guild, LogEvent(
+            LogType.VOICE, "⚙️ Permanent Voice Configuration Changed",
+            staff=interaction.user, fields=[("Channel", channel_text, True)],
+        ))
+        voice_cog = self.bot.get_cog("PermanentVoiceCog")
+        if voice_cog is not None:
+            voice_cog.request_reconnect(interaction.guild)
         await interaction.response.send_message(message, ephemeral=True)
 
     # ------------------------------------------------------------ level-role

@@ -1,8 +1,9 @@
 """Normal Member XP, level commands, and periodic Voice XP tracking."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+import asyncio
+from dataclasses import dataclass, field
+from datetime import datetime
 
 import discord
 from discord import app_commands
@@ -29,12 +30,15 @@ from bot.services.member_xp_service import (
 class VoiceSession:
     channel_id: int
     credited_at: datetime
+    remainder_seconds: float = 0
+    credit_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
 
 class MemberLevelingCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._voice_sessions: dict[tuple[int, int], VoiceSession] = {}
+        self._voice_remainders: dict[tuple[int, int], float] = {}
 
     async def cog_load(self):
         if not self.voice_xp_tick.is_running():
@@ -65,12 +69,18 @@ class MemberLevelingCog(commands.Cog):
     async def on_ready(self):
         # After a restart, begin tracking currently connected members from now; never award downtime.
         self._voice_sessions.clear()
+        # Do not award downtime; active voice members start a fresh session at reconnect.
+        self._voice_remainders.clear()
         now = discord.utils.utcnow()
         for guild in self.bot.guilds:
-            for member in guild.members:
-                state = member.voice
-                if state is not None and await self._voice_eligible(member, state):
-                    self._voice_sessions[(guild.id, member.id)] = VoiceSession(state.channel.id, now)
+            # Channel member caches are the authoritative set of currently connected users;
+            # this also avoids missing voice members in guilds whose full member list is not chunked.
+            channels = [*guild.voice_channels, *guild.stage_channels]
+            for channel in channels:
+                for member in channel.members:
+                    state = member.voice
+                    if state is not None and await self._voice_eligible(member, state):
+                        self._voice_sessions[(guild.id, member.id)] = VoiceSession(channel.id, now)
 
     async def process_voice_state_update(
         self,
@@ -82,12 +92,31 @@ class MemberLevelingCog(commands.Cog):
         if await self._voice_eligible(member, after):
             session = self._voice_sessions.get(key)
             if session is None:
-                self._voice_sessions[key] = VoiceSession(after.channel.id, discord.utils.utcnow())
+                self._voice_sessions[key] = VoiceSession(
+                    after.channel.id, discord.utils.utcnow(), self._voice_remainders.pop(key, 0)
+                )
             else:
                 # Moving between eligible channels preserves continuous eligible listening time.
                 session.channel_id = after.channel.id
         else:
+            session = self._voice_sessions.get(key)
+            if session is not None:
+                await self._credit_voice_session(member, session, discord.utils.utcnow())
+                self._voice_sessions.pop(key, None)
+                if session.remainder_seconds:
+                    self._voice_remainders[key] = session.remainder_seconds
+
+    async def process_voice_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
+        """Close sessions in a deleted voice channel using the existing tracker."""
+        for key, session in list(self._voice_sessions.items()):
+            if key[0] != channel.guild.id or session.channel_id != channel.id:
+                continue
+            member = channel.guild.get_member(key[1])
+            if member is not None:
+                await self._credit_voice_session(member, session, discord.utils.utcnow())
             self._voice_sessions.pop(key, None)
+            if session.remainder_seconds:
+                self._voice_remainders[key] = session.remainder_seconds
 
     async def _voice_eligible(self, member: discord.Member, state: discord.VoiceState) -> bool:
         channel = state.channel
@@ -119,23 +148,46 @@ class MemberLevelingCog(commands.Cog):
                 member = guild.get_member(key[1]) if guild else None
                 state = member.voice if member else None
                 if member is None or state is None or not await self._voice_eligible(member, state):
-                    self._voice_sessions.pop(key, None)
+                    if member is None:
+                        self._voice_sessions.pop(key, None)
+                        self._voice_remainders.pop(key, None)
+                    else:
+                        stopped = self._voice_sessions.get(key)
+                        if stopped is not None:
+                            await self._credit_voice_session(member, stopped, now)
+                            self._voice_sessions.pop(key, None)
+                            if stopped.remainder_seconds:
+                                self._voice_remainders[key] = stopped.remainder_seconds
                     continue
                 if state.channel.id != session.channel_id:
                     session.channel_id = state.channel.id
 
-                interval = int(await config_service.get_setting(guild.id, "voice_xp_interval") or 60)
-                amount_per_interval = int(await config_service.get_setting(guild.id, "voice_xp_amount") or 0)
-                interval = max(1, interval)
-                periods = int((now - session.credited_at).total_seconds() // interval)
-                if periods <= 0:
-                    continue
-                if amount_per_interval > 0:
-                    await award_voice_xp(member, amount_per_interval * periods)
-                session.credited_at += timedelta(seconds=interval * periods)
+                await self._credit_voice_session(member, session, now)
             except Exception:
                 # Keep the session and retry at the next tick; XP failures never stop the loop.
                 logger.exception("Voice XP tick failed for guild/member %s.", key)
+
+    async def _credit_voice_session(
+        self, member: discord.Member, session: VoiceSession, now: datetime
+    ) -> None:
+        # A voice event and the periodic task can overlap. Serialize crediting so the same
+        # interval cannot be awarded by both paths.
+        async with session.credit_lock:
+            effective_now = max(now, session.credited_at)
+            interval = max(1, int(await config_service.get_setting(member.guild.id, "voice_xp_interval") or 60))
+            amount_per_interval = int(await config_service.get_setting(member.guild.id, "voice_xp_amount") or 0)
+            elapsed = max(0, (effective_now - session.credited_at).total_seconds()) + session.remainder_seconds
+            if amount_per_interval <= 0:
+                session.remainder_seconds = 0
+                session.credited_at = effective_now
+                return
+            periods = int(elapsed // interval)
+            if periods:
+                await award_voice_xp(member, amount_per_interval * periods)
+            # Keep fractional eligible time across channel exclusions/moves. Advance only
+            # after the XP service succeeds so transient database errors can be retried.
+            session.remainder_seconds = elapsed - periods * interval
+            session.credited_at = effective_now
 
     @voice_xp_tick.before_loop
     async def before_voice_xp_tick(self):
