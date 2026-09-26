@@ -14,7 +14,7 @@ from enum import Enum
 from bot.core.errors import ConfigError, UnknownSettingError
 from bot.config.game_registry import GAMES
 
-MAX_STR_LENGTH = 1000
+MAX_STR_LENGTH = 4000
 
 _TRUE_WORDS = {"true", "yes", "on", "1", "نعم"}
 _FALSE_WORDS = {"false", "no", "off", "0", "لا"}
@@ -45,6 +45,7 @@ GROUPS: dict[str, str] = {
     "voice": "🔊 الصوت الدائم",
     "staff_xp": "🛡️ XP الطاقم",
     "staff_games": "🎮 ألعاب الطاقم",
+    "phase14": "🛡️ Moderation & Reactions",
     "temp_voice": "🔊 الرومات المؤقتة",
     "tickets": "🎫 التذاكر",
     "applications": "📝 الطلبات والاستئنافات",
@@ -315,6 +316,13 @@ SETTING_LIST: list[SettingDef] = [
     _int("warn_expire_days", "moderation", "أيام صلاحية التحذير (0 = لا ينتهي)", 0, 0, 3650),
     _bool("mod_dm_user", "moderation", "إرسال رسالة خاصة للعضو عند العقوبة", True),
     _int("mod_clear_max", "moderation", "أقصى عدد رسائل في أمر /clear", 100, 1, 1000),
+    SettingDef("empress_role", Kind.ROLE, "phase14", "Configured Empress authorization role", None),
+    SettingDef("empress_gif", Kind.STR, "phase14", "GIF URL shown in Empress confirmations", None),
+    _text("rules_channel", "phase14", "Rules message channel"),
+    SettingDef("rules_message", Kind.STR, "phase14", "Custom rules message content", None),
+    SettingDef("rules_emojis", Kind.STR, "phase14", "Comma-separated rules reactions", None),
+    _text("reaction_role_logs", "phase14", "Reaction-role result channel"),
+    _role("game_cleanup_role", "phase14", "Game role managed by cleanup panel"),
 
     # ---- AutoMod ----
     _bool("automod_enabled", "automod", "تفعيل AutoMod", False),

@@ -191,3 +191,68 @@ Use `/config set-value key:staff_warn_xp_penalty value:500` to set the nonnegati
 The Staff Games panel supports Spy, Criminal, Mafia, Codenames, and Loup Garou. Each game has its own panel channel, public results channel, and configurable host XP. Configure channels using `/config set-channel` with `spy_panel_channel` / `spy_results_channel` (and the corresponding `criminal_*`, `mafia_*`, `codenames_*`, and `loup_garou_*` keys); set host XP with `/config game-xp game:spy xp:100`. Results channels must be visible to @everyone and different from their Staff-only panel channel. Panel channels must deny View Channel to @everyone and grant visibility only to configured Staff roles.
 
 After configuring channels, publish each private panel with `/game-panel publish game:spy` (repeat for each game). Staff start a game by selecting a Staff/High Staff host; at the end they select the host again and enter a member, team, or side as winner. The bot stores the start/end time and duration, atomically stores the game result with one `game_host` transaction in the existing `staff_xp_history`, then runs the existing Staff promotion hook. Only the game result, host, time, duration, and winner appear in the public results channel; XP and controls remain internal. One active session is allowed per game per server. Active games and completed/cancelled records survive restarts. The bot must have Send Messages and Embed Links in panel/results channels; it also needs Manage Roles and the existing role hierarchy for promotion updates.
+
+## Phase 14 — Moderation, Empress, and Reactions
+
+Phase 14 extends the shared configuration registry, Staff permission hierarchy, database, and central logging service. Normal moderation commands require Staff level and cannot act on equal/higher Staff or a member above the moderator in Discord hierarchy. Empress commands use only the configured per-server Empress role as their custom authorization; Discord permissions and bot role position are still required for actions the API restricts. Configure `/config set-channel key:log_moderation channel:#mod-logs` and `/config set-channel key:log_role channel:#role-logs` as desired.
+
+### Moderation examples
+
+```text
+/ban user:@Member reason:Breaking server rules
+/warn user:@Member reason:Spamming
+/timeout user:@Member duration:10m reason:Spam
+/lock channel:#general reason:Emergency
+/unlock channel:#general reason:Emergency resolved
+```
+
+Timeout accepts a number plus `s`, `m`, `h`, or `d`, from 1 minute through Discord's 28-day limit. Ban, Warn, and Timeout attempt a DM. A blocked DM does not prevent the action and its failure is recorded in the central moderation log. Every action is recorded in `moderation_actions`.
+
+### Empress configuration and commands
+
+```text
+/config set-role key:empress_role role:@Empress
+/config set-value key:empress_gif value:https://example.com/empress.gif
+/empress-ban user:@Member reason:Empress decision
+/empress-unban user_id:123456789012345678 reason:Review complete
+/empress-lock channel:#general reason:Emergency
+/empress-unlock channel:#general reason:Resolved
+```
+
+The GIF setting is optional; the exact response “Ready to serve you, my Empress.” is still sent if it is unset or unavailable. Locking changes only the `@everyone` send-message and thread-send bits, saves their prior values, and restores those bits on unlock while preserving other overwrites. Unban DM is best-effort because the user may not share a server or permit DMs.
+
+### Rules and reaction roles
+
+```text
+/rules configure channel:#rules message:<your full rules text> emojis:📜,⚠️,✅
+/rules publish
+/config set-channel key:reaction_role_logs channel:#role-logs
+/reaction-role add channel:#roles message_id:123456789012345678 emoji:🎮 role:@Gaming persistent:false
+/reaction-role remove message_id:123456789012345678 emoji:🎮
+/role-reaction add role:@VIP emoji:👑
+/role-reaction remove role:@VIP
+```
+
+Rules are published as an embed and bot reactions are added automatically; if all configured rules reactions are unusable, the bot tries ✅. Reaction-role mappings are guild/message scoped, support Unicode or server custom emoji, and add the role on reaction. Removing a reaction removes the role unless `persistent:true`. Role reaction automation only reacts to messages by non-bot members with a configured role. Reaction-role results go to `reaction_role_logs` when configured and also use the central role log.
+
+### Game cleanup
+
+```text
+/game-cleanup set-game-role role:@Game
+/game-cleanup publish channel:#game-help
+/game-nickname set member:@Player nickname:"Sofia #17" game_id:mafia-42
+```
+
+The panel buttons let a member restore only their own saved nickname, remove only the configured Game Role, or remove their own roles mapped through Reaction Roles. Staff roles, Staff promotion roles, moderation roles, and verification roles are excluded. `/game-nickname set` stores the member's exact previous nickname before changing it; the bot requires Manage Nicknames and a higher role. The existing Phase 13.5 Staff Games system does not currently assign player roles or change player nicknames, so host/member assignment automation remains a later integration point; these cleanup controls operate on explicitly configured data.
+
+### Phase 14 verification checklist
+
+- [ ] Configure a Moderation log and verify Ban, Warn, Timeout, Lock and Unlock records.
+- [ ] Check hierarchy denial for equal/higher Staff and targets above the bot.
+- [ ] Configure an Empress role and GIF; verify members without that role are denied and all four Empress commands work.
+- [ ] Verify no-GIF Empress response, DMs disabled, lock/unlock restoration, and per-guild settings.
+- [ ] Publish rules with Unicode/custom emoji and verify fallback when a custom emoji is unavailable.
+- [ ] Add/remove multiple reaction-role mappings and test the persistent option, deleted roles/messages, and result logs.
+- [ ] Test role-based reactions with matching, nonmatching, and bot authors.
+- [ ] Save a game nickname, restore it from the panel, and verify only configured Game/Self roles can be removed.
+- [ ] Run the Phase 10, 11, 12, 13, and 13.5 checklists above after deployment.

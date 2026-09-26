@@ -8,8 +8,10 @@ from bot.database.models.temp_voice import TempVoiceRoom, TempVoiceRoomAccess, T
 from bot.database.models.staff_promotion import StaffPromotionState
 from bot.database.models.staff_warning import StaffWarning
 from bot.database.models.staff_game import StaffGameSession
+from bot.database.models.phase14 import ModerationAction, ChannelLockState, ReactionRoleMapping, RoleReactionRule, NicknameSnapshot
 __all__ = [
     "Guild", "GuildSetting", "User", "VerificationRecord", "StaffXPHistory",
     "InviteAttribution", "MemberXP", "TempVoiceRoom", "TempVoiceRoomAccess",
     "TempVoiceRoomBan", "StaffPromotionState", "StaffWarning", "StaffGameSession",
+    "ModerationAction", "ChannelLockState", "ReactionRoleMapping", "RoleReactionRule", "NicknameSnapshot",
 ]

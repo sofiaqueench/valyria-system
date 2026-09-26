@@ -41,6 +41,9 @@ class DiscordBot(commands.Bot):
         await self.load_extension("bot.cogs.permissions_cog")
         await self.load_extension("bot.cogs.verification_cog")
         await self.load_extension("bot.cogs.welcome_cog")
+        await self.load_extension("bot.cogs.phase14_moderation_cog")
+        await self.load_extension("bot.cogs.phase14_reactions_cog")
+        await self.load_extension("bot.cogs.game_cleanup_cog")
         logger.info("تم تحميل جميع الـ Cogs بنجاح.")
 
         if settings.guild_id:
