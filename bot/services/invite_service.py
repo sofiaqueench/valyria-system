@@ -15,7 +15,9 @@ from bot.database.models.invite import InviteAttribution
 from bot.database.models.verification import StaffXPHistory
 from bot.services import config_service
 from bot.services.logging_service import LogEvent, LogType, send_log
-from bot.services.staff_xp_service import add_staff_xp_to_session
+from bot.services.staff_xp_service import (
+    add_staff_xp_to_session, get_staff_xp_mutation_lock, on_staff_xp_awarded,
+)
 
 
 @dataclass(frozen=True)
@@ -213,6 +215,12 @@ class InviteTracker:
             xp_note = "Joined account is a bot"
 
         await config_service.get_or_create_guild(guild.id)
+        mutation_lock = (
+            get_staff_xp_mutation_lock(guild.id, result.inviter_id)
+            if eligible and xp_amount > 0 and result.inviter_id is not None else None
+        )
+        if mutation_lock is not None:
+            await mutation_lock.acquire()
         try:
             async with async_session() as session:
                 async with session.begin():
@@ -282,6 +290,19 @@ class InviteTracker:
                 duplicate=True,
                 xp_note="Concurrent/rejoin attribution already exists; XP prevented",
             )
+        finally:
+            if mutation_lock is not None and mutation_lock.locked():
+                mutation_lock.release()
+
+        # Invite attribution and its ledger row commit together. Promotion is
+        # processed only after that transaction commits, through the shared XP hook.
+        if result.xp_awarded and inviter_member is not None:
+            try:
+                await on_staff_xp_awarded(
+                    inviter_member, amount=result.xp_amount, source="invite",
+                )
+            except Exception:
+                logger.exception("Invite Staff XP was saved but promotion processing failed for %s.", inviter_member.id)
 
         await self._log_attribution(member, result, inviter_user)
         return result

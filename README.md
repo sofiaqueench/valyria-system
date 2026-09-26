@@ -162,3 +162,32 @@ Temporary rooms reuse the existing guild configuration, database, centralized Vo
 The bot needs Manage Channels and Move Members at guild level, plus View Channel, Connect, Send Messages, and Embed Links in the generator/category and generated rooms. It must be able to apply room overwrites (Manage Roles). Ensure configured staff roles are above the bot only when Discord hierarchy requires it. Staff override reuses the existing permission levels; it does not add Staff ranks or promotions.
 
 Room records and room-scoped bans/access are stored in the existing database. Startup recovery restores each existing room and its panel without creating new rooms. Temp Voice uses the existing Member Voice XP rules, so solo-room rewards and Verification/Jail exclusions remain unchanged. Local mocks can check bot-side behavior, but actual permission behavior, panel display, and XP accrual should also be confirmed in a Discord test server.
+
+## Phase 13 — Staff XP and automatic promotion
+
+Staff XP continues to use the existing `staff_xp_history` ledger. Invite attribution and Verification awards now call the shared post-award promotion hook; Member XP, Member Levels, Voice XP, and Temp Voice do not award Staff XP. Staff XP is cumulative and is not reset when a promotion happens.
+
+Configure all 11 promotion slots as an ordered ladder. Thresholds must increase with rank, role IDs must be unique, and High Staff slots must follow Staff slots. Promotions stay inactive until every slot is configured. For example:
+
+```text
+/config staff-rank set rank:1 role:@Staff I rank_type:staff required_xp:1000
+/config staff-rank set rank:2 role:@Staff II rank_type:staff required_xp:2500
+/config staff-rank set rank:3 role:@Staff III rank_type:staff required_xp:5000
+...configure ranks 4–6 as staff...
+/config staff-rank set rank:7 role:@High Staff I rank_type:high_staff required_xp:25000
+...configure ranks 8–11 as high_staff with increasing XP...
+```
+
+Thresholds and role names above are examples only; select your own. Use `/config staff-rank view` to inspect the slots, `/config staff-rank remove rank:11` to clear a slot, and `/config view group:staff_xp` to review XP and channel settings. Set the two announcement channels with `/config set-channel key:staff_promotion_channel channel:#staff-promotions` and `/config set-channel key:high_staff_promotion_channel channel:#high-staff-promotions`. Staff can use `/staff-xp` to view their XP, current rank, next threshold, and remaining XP.
+
+At each committed Staff XP award, the bot calculates the highest earned slot, changes only configured Staff Promotion roles, stores the last applied rank, announces once in the matching channel, and writes to the centralized XP log. If one award passes several thresholds, it assigns the highest earned role and sends one announcement. The bot needs Manage Roles and its highest role must be above all 11 promotion roles. A missing announcement channel does not block the role update. Rank configuration is stored in the existing guild settings; the new migration stores per-guild, per-member promotion state. The first award or `/staff-xp` status check can reconcile an earned rank after configuration is completed or a managed rank role is removed.
+
+### Staff Warn XP penalty add-on
+
+Use `/config set-value key:staff_warn_xp_penalty value:500` to set the nonnegative XP penalty (Admin/Owner only), then issue `/staff-warn member:@Member reason:...`. The command checks the configured Staff hierarchy and prevents lower-ranked Staff from warning higher-ranked Staff. Each warning is stored once by interaction ID; the linked `staff_xp_history` entry uses `action=staff_warn` and a negative XP amount. XP never drops below zero. With a complete rank configuration, the bot updates the configured rank role after a threshold reduction, including Staff/High Staff tier changes, and records that rank state without sending a promotion announcement. Configure the optional reduction channel with `/config set-channel key:staff_demotion_channel channel:#staff-demotions`; if unset, the XP log still records the warning and rank change. `/staff-xp` shows the latest XP change and its source.
+
+## Phase 13.5 — Staff Games
+
+The Staff Games panel supports Spy, Criminal, Mafia, Codenames, and Loup Garou. Each game has its own panel channel, public results channel, and configurable host XP. Configure channels using `/config set-channel` with `spy_panel_channel` / `spy_results_channel` (and the corresponding `criminal_*`, `mafia_*`, `codenames_*`, and `loup_garou_*` keys); set host XP with `/config game-xp game:spy xp:100`. Results channels must be visible to @everyone and different from their Staff-only panel channel. Panel channels must deny View Channel to @everyone and grant visibility only to configured Staff roles.
+
+After configuring channels, publish each private panel with `/game-panel publish game:spy` (repeat for each game). Staff start a game by selecting a Staff/High Staff host; at the end they select the host again and enter a member, team, or side as winner. The bot stores the start/end time and duration, atomically stores the game result with one `game_host` transaction in the existing `staff_xp_history`, then runs the existing Staff promotion hook. Only the game result, host, time, duration, and winner appear in the public results channel; XP and controls remain internal. One active session is allowed per game per server. Active games and completed/cancelled records survive restarts. The bot must have Send Messages and Embed Links in panel/results channels; it also needs Manage Roles and the existing role hierarchy for promotion updates.

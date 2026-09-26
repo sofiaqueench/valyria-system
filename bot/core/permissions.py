@@ -58,6 +58,21 @@ async def get_staff_level(member: discord.Member) -> StaffLevel:
         role_id = await get_setting(member.guild.id, setting_key)
         if role_id is not None and role_id in member_role_ids:
             return level
+    # Promotion roles also identify Staff members after the generic eligibility
+    # marker role has been replaced or was never assigned separately.
+    try:
+        from bot.services.staff_promotion_service import get_rank_config
+        promotion_roles = await get_rank_config(member.guild.id)
+        if any(rank.role_id in member_role_ids for rank in promotion_roles.values()):
+            return StaffLevel.STAFF
+        # A rank-0 promotion state means a Staff Warn reduced XP below the first
+        # configured rank. The member remains Staff-eligible for future warnings.
+        from bot.services.staff_promotion_service import get_promotion_state
+        state = await get_promotion_state(member.guild.id, member.id)
+        if state is not None:
+            return StaffLevel.STAFF
+    except Exception:
+        pass
     return StaffLevel.NONE
 
 

@@ -227,6 +227,7 @@ async def handle_workflow_action(interaction: discord.Interaction, record_id: in
             awarded = await add_verification_xp(
                 guild_id=guild.id, staff_id=interaction.user.id, target_id=member.id,
                 verification_record_id=record_id, amount=amount,
+                member=interaction.user,
             )
             await send_log(guild, LogEvent(
                 LogType.VERIFICATION, "✅ Member Verified", user=member, staff=interaction.user,

@@ -55,17 +55,26 @@ class TempVoiceMemberSelectView(discord.ui.View):
         super().__init__(timeout=120)
         self.cog = cog
         self.channel_id = channel_id
+        placeholder = "Select a matching server member" if action in {"give_access", "ban"} else (
+            "Select a member currently in this room"
+        )
         options = [
-            discord.SelectOption(label=member.display_name[:100], value=str(member.id))
+            discord.SelectOption(
+                label=(f"{member.display_name} (@{member.name})" if action in {"give_access", "ban"} else member.display_name)[:100],
+                value=str(member.id),
+            )
             for member in members[:25]
         ]
-        self.add_item(TempVoiceMemberSelect(channel_id, action, options, cog))
+        self.add_item(TempVoiceMemberSelect(channel_id, action, options, cog, placeholder=placeholder))
 
 
 class TempVoiceMemberSelect(discord.ui.Select):
-    def __init__(self, channel_id: int, action: str, options: list[discord.SelectOption], cog):
+    def __init__(
+        self, channel_id: int, action: str, options: list[discord.SelectOption], cog,
+        *, placeholder: str = "Select a member currently in this room",
+    ):
         super().__init__(
-            placeholder="Select a member currently in this room",
+            placeholder=placeholder,
             min_values=1, max_values=1, options=options,
             custom_id=f"temp_voice:{action}:{channel_id}",
         )
@@ -79,27 +88,55 @@ class TempVoiceMemberSelect(discord.ui.Select):
         )
 
 
-class TempVoiceUserSelectView(discord.ui.View):
-    def __init__(self, cog, channel_id: int):
+class TempVoiceSearchView(discord.ui.View):
+    def __init__(self, cog, channel_id: int, action: str):
         super().__init__(timeout=120)
-        self.add_item(TempVoiceUserSelect(cog, channel_id))
+        self.cog = cog
+        self.channel_id = channel_id
+        self.action = action
+        self.add_item(TempVoiceGuildUserSelect(cog, channel_id, action))
+
+    @discord.ui.button(label="Search by name or ID", style=discord.ButtonStyle.secondary, row=1)
+    async def search_member(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(
+            TempVoiceMemberSearchModal(self.cog, self.channel_id, self.action)
+        )
 
 
-class TempVoiceUserSelect(discord.ui.UserSelect):
-    def __init__(self, cog, channel_id: int):
+class TempVoiceGuildUserSelect(discord.ui.UserSelect):
+    def __init__(self, cog, channel_id: int, action: str):
         super().__init__(
-            placeholder="Choose a server member to give room access",
+            placeholder="Search this server by username or display name",
             min_values=1, max_values=1,
-            custom_id=f"temp_voice:give_access:{channel_id}",
+            custom_id=f"temp_voice:{action}:search:{channel_id}",
         )
         self.cog = cog
         self.channel_id = channel_id
+        self.action = action
 
     async def callback(self, interaction: discord.Interaction):
         target = self.values[0]
         if not isinstance(target, discord.Member):
             return await self.cog.reply(interaction, "That user is not a member of this server.", ephemeral=True)
-        await self.cog.safe_select_action(interaction, self.channel_id, "give_access", target.id)
+        await self.cog.safe_select_action(interaction, self.channel_id, self.action, target.id)
+
+
+class TempVoiceMemberSearchModal(discord.ui.Modal, title="Search Server Members"):
+    query = discord.ui.TextInput(
+        label="Username, display name, or User ID", placeholder="alex or 123456789012345678",
+        min_length=1, max_length=100, required=True,
+    )
+
+    def __init__(self, cog, channel_id: int, action: str):
+        super().__init__(custom_id=f"temp_voice:{action}:search_input:{channel_id}", timeout=180)
+        self.cog = cog
+        self.channel_id = channel_id
+        self.action = action
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.cog.search_temp_voice_member(
+            interaction, self.channel_id, self.action, str(self.query.value),
+        )
 
 
 class TempVoiceRenameModal(discord.ui.Modal, title="Rename Temporary Room"):

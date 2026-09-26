@@ -32,6 +32,8 @@ class DiscordBot(commands.Bot):
         await self.load_extension("bot.cogs.ping_cog")
         await self.load_extension("bot.cogs.config_cog")
         await self.load_extension("bot.cogs.invite_cog")
+        await self.load_extension("bot.cogs.staff_xp_cog")
+        await self.load_extension("bot.cogs.staff_games_cog")
         await self.load_extension("bot.cogs.member_leveling_cog")
         await self.load_extension("bot.cogs.permanent_voice_cog")
         await self.load_extension("bot.cogs.temp_voice_cog")

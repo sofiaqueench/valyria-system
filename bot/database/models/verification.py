@@ -28,4 +28,5 @@ class StaffXPHistory(Base):
     xp_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     target_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     verification_record_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("verification_records.id", ondelete="CASCADE"), nullable=True)
+    game_session_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("staff_game_sessions.id", ondelete="SET NULL"), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

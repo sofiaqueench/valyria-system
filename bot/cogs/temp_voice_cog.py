@@ -13,7 +13,7 @@ from bot.services import config_service, temp_voice_service as store
 from bot.services.logging_service import LogEvent, LogType, send_log
 from bot.views.temp_voice import (
     TempVoiceLimitModal, TempVoiceMemberSelectView, TempVoiceOwnerView,
-    TempVoiceRenameModal, TempVoiceUserSelectView,
+    TempVoiceRenameModal, TempVoiceSearchView,
 )
 
 
@@ -357,18 +357,20 @@ class TempVoiceCog(commands.Cog):
                 return await interaction.response.send_modal(TempVoiceRenameModal(self, room.channel_id))
             if action == "limit":
                 return await interaction.response.send_modal(TempVoiceLimitModal(self, room.channel_id))
-            if action in {"kick", "transfer", "ban"}:
+            if action in {"kick", "transfer"}:
                 candidates = [m for m in self._human_members(channel) if m.id not in {room.owner_id, member.id}]
                 if not candidates:
                     return await interaction.response.send_message("No eligible members are currently in this room.", ephemeral=True)
-                prompt = {"kick": "Select a member to kick", "transfer": "Transfer ownership to", "ban": "Select a member to ban from this room"}[action]
+                prompt = {"kick": "Select a member to kick", "transfer": "Transfer ownership to"}[action]
                 return await interaction.response.send_message(
                     prompt, view=TempVoiceMemberSelectView(self, room.channel_id, action, candidates), ephemeral=True,
                 )
-            if action == "give_access":
+            if action in {"give_access", "ban"}:
+                prompt = "Search this server for a member to give room access." if action == "give_access" else (
+                    "Search this server for a member to ban from this room. Only a member currently in the room can be banned."
+                )
                 return await interaction.response.send_message(
-                    "Choose a server member to give access to this room.",
-                    view=TempVoiceUserSelectView(self, room.channel_id), ephemeral=True,
+                    prompt, view=TempVoiceSearchView(self, room.channel_id, action), ephemeral=True,
                 )
             if action == "remove_access":
                 access_ids = await store.list_room_access(room.guild_id, room.channel_id)
@@ -530,6 +532,47 @@ class TempVoiceCog(commands.Cog):
             await interaction.followup.send(text, ephemeral=True)
         except Exception as exc:
             logger.exception("Temp Voice select action %s failed.", action)
+            await self.reply(interaction, f"⚠️ {exc}", ephemeral=True)
+
+    async def search_temp_voice_member(
+        self, interaction: discord.Interaction, channel_id: int, action: str, query: str,
+    ) -> None:
+        """Resolve a typed ID or return substring matches from this guild for the existing action select."""
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            if interaction.guild is None:
+                raise ValueError("This search only works inside the server.")
+            await self._authorize(interaction, require_panel=False, channel_id=channel_id)
+            query = query.strip()
+            if not query:
+                raise ValueError("Enter a username, display name, or User ID.")
+
+            if query.isdigit():
+                try:
+                    matches = [await interaction.guild.fetch_member(int(query))]
+                except discord.NotFound:
+                    return await interaction.followup.send(
+                        "⚠️ No member with that ID was found in this server.", ephemeral=True,
+                    )
+            else:
+                normalized = query.casefold()
+                matches = [
+                    member async for member in interaction.guild.fetch_members(limit=None)
+                    if normalized in member.name.casefold()
+                    or normalized in member.display_name.casefold()
+                ]
+
+            if not matches:
+                return await interaction.followup.send(
+                    "⚠️ No server members match that username or display name.", ephemeral=True,
+                )
+            return await interaction.followup.send(
+                f"Select a matching member ({min(len(matches), 25)} shown):",
+                view=TempVoiceMemberSelectView(self, channel_id, action, matches[:25]),
+                ephemeral=True,
+            )
+        except Exception as exc:
+            logger.exception("Temp Voice member search for %s failed.", action)
             await self.reply(interaction, f"⚠️ {exc}", ephemeral=True)
 
     async def safe_modal_action(self, interaction: discord.Interaction, channel_id: int, action: str, value: str) -> None:

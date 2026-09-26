@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from bot.core.errors import ConfigError, UnknownSettingError
+from bot.config.game_registry import GAMES
 
 MAX_STR_LENGTH = 1000
 
@@ -43,6 +44,7 @@ GROUPS: dict[str, str] = {
     "xp": "⭐ XP الأعضاء",
     "voice": "🔊 الصوت الدائم",
     "staff_xp": "🛡️ XP الطاقم",
+    "staff_games": "🎮 ألعاب الطاقم",
     "temp_voice": "🔊 الرومات المؤقتة",
     "tickets": "🎫 التذاكر",
     "applications": "📝 الطلبات والاستئنافات",
@@ -261,6 +263,22 @@ SETTING_LIST: list[SettingDef] = [
     _int("staff_xp_application_review", "staff_xp", "XP الطاقم عند مراجعة طلب", 15, 0, 1000),
     _int("staff_xp_cooldown", "staff_xp", "ثواني الانتظار بين إجراءين يعطيان XP", 30, 0, 3600),
     _int("staff_xp_daily_cap", "staff_xp", "أقصى XP يومي للإداري (0 = بلا حد)", 500, 0, 100000),
+    _int("staff_warn_xp_penalty", "staff_xp", "خصم Staff XP لكل Staff Warn", 500, 0, 1000000),
+    SettingDef("staff_rank_config", Kind.STR, "staff_xp", "رتب Staff XP؛ تُدار عبر /config staff-rank", "{}"),
+    _text("staff_promotion_channel", "staff_xp", "قناة إعلانات ترقيات Staff"),
+    _text("high_staff_promotion_channel", "staff_xp", "قناة إعلانات ترقيات High Staff"),
+    _text("staff_demotion_channel", "staff_xp", "قناة إعلانات خفض رتب Staff"),
+
+    # ---- ألعاب الطاقم ----
+    *[
+        item
+        for game in GAMES.values()
+        for item in (
+            _int(game.xp_key, "staff_games", f"Staff XP لمضيف لعبة {game.label}", 0, 0, 1000000),
+            _text(game.panel_channel_key, "staff_games", f"قناة لوحة لعبة {game.label}"),
+            _text(game.results_channel_key, "staff_games", f"قناة نتائج لعبة {game.label}"),
+        )
+    ],
 
     # ---- الرومات المؤقتة ----
     _category("temp_voice_category", "temp_voice", "كاتيغوري الرومات المؤقتة"),
