@@ -87,9 +87,9 @@ async def build_welcome_embed(member: discord.Member) -> discord.Embed:
     rules_channel = guild.get_channel(rules_channel_id) if rules_channel_id else None
     rules_text = f"Please read the rules in {rules_channel.mention}." if rules_channel else "Please read the server rules."
     embed.add_field(name=f"{rules_emoji} Rules", value=rules_text, inline=True)
-    verify_channel_id = await config_service.get_setting(guild.id, "verification_channel")
-    verify_channel = guild.get_channel(verify_channel_id) if verify_channel_id else None
-    verify_text = f"Complete verification in {verify_channel.mention}." if verify_channel else "Complete the verification process to access the server."
+    verify_voice_id = await config_service.get_setting(guild.id, "verification_voice")
+    verify_voice = guild.get_channel(verify_voice_id) if verify_voice_id else None
+    verify_text = f"Complete verification in {verify_voice.mention}." if verify_voice else "Complete the verification process to access the server."
     embed.add_field(name=f"{verify_emoji} Verification", value=verify_text, inline=False)
 
     use_avatar = await config_service.get_setting(guild.id, "welcome_use_member_avatar")
