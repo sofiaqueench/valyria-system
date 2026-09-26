@@ -44,6 +44,11 @@ _LEVELING_SETTINGS = {
     "voice_xp_amount", "voice_xp_ignore_deafened", "level_up_enabled", "level_up_banner",
     "level_up_emoji",
 }
+_TEMP_VOICE_SETTINGS = {
+    "temp_voice_default_name", "temp_voice_default_limit", "temp_voice_delete_delay",
+    "temp_voice_panel_enabled", "temp_voice_panel_staff_override",
+    "temp_voice_staff_call_cooldown", "temp_voice_banner",
+}
 
 
 def format_value(definition: SettingDef, value: int | bool | str | None) -> str:
@@ -140,6 +145,11 @@ class ConfigCog(commands.Cog):
             voice_cog = self.bot.get_cog("PermanentVoiceCog")
             if voice_cog is not None:
                 voice_cog.request_reconnect(interaction.guild)
+        if key in {"temp_voice_create_channel", "temp_voice_category", "temp_voice_staff_alert"}:
+            await send_log(interaction.guild, LogEvent(
+                LogType.VOICE, "⚙️ Temporary Voice Configuration Changed", staff=interaction.user,
+                fields=[("Setting", key, True), ("Channel", channel.mention, True)],
+            ))
         await interaction.response.send_message(f"✅ تم ضبط `{key}` على {channel.mention}", ephemeral=True)
 
     @set_channel.autocomplete("key")
@@ -186,6 +196,11 @@ class ConfigCog(commands.Cog):
                 LogType.XP, "⚙️ Member Leveling Setting Changed", staff=interaction.user,
                 fields=[("Setting", key, True), ("Value", str(saved)[:900], False)],
             ))
+        if key in _TEMP_VOICE_SETTINGS:
+            await send_log(interaction.guild, LogEvent(
+                LogType.VOICE, "⚙️ Temporary Voice Configuration Changed", staff=interaction.user,
+                fields=[("Setting", key, True), ("Value", str(saved)[:900], False)],
+            ))
         await interaction.response.send_message(
             f"✅ تم ضبط `{key}` على {format_value(definition, saved)}", ephemeral=True
         )
@@ -214,6 +229,11 @@ class ConfigCog(commands.Cog):
             await send_log(interaction.guild, LogEvent(
                 LogType.XP, "⚙️ Member Leveling Setting Reset", staff=interaction.user,
                 fields=[("Setting", key, True), ("Default", str(definition.default)[:900], False)],
+            ))
+        if existed and (key in _TEMP_VOICE_SETTINGS or key in {"temp_voice_create_channel", "temp_voice_category", "temp_voice_staff_alert"}):
+            await send_log(interaction.guild, LogEvent(
+                LogType.VOICE, "⚙️ Temporary Voice Setting Reset", staff=interaction.user,
+                fields=[("Setting", key, True)],
             ))
         if existed:
             message = f"✅ تمت إعادة `{key}` إلى الافتراضي: {format_value(definition, definition.default)}"
@@ -245,6 +265,14 @@ class ConfigCog(commands.Cog):
                 permissions = channel.permissions_for(bot_member)
                 if not permissions.view_channel or not permissions.connect:
                     message += " ⚠️ Grant the bot View Channel and Connect in that channel. Speak is not required."
+                bot_permissions = bot_member.guild_permissions
+                missing = [name for name, present in (
+                    ("Manage Channels", bot_permissions.manage_channels),
+                    ("Manage Roles", bot_permissions.manage_roles),
+                    ("Move Members", bot_permissions.move_members),
+                ) if not present]
+                if missing:
+                    message += " ⚠️ Server permissions also needed: " + ", ".join(missing) + "."
             channel_text = channel.mention
 
         await send_log(interaction.guild, LogEvent(

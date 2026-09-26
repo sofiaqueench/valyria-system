@@ -265,11 +265,14 @@ SETTING_LIST: list[SettingDef] = [
     # ---- الرومات المؤقتة ----
     _category("temp_voice_category", "temp_voice", "كاتيغوري الرومات المؤقتة"),
     _voice("temp_voice_create_channel", "temp_voice", "روم Create Voice"),
-    _str("temp_voice_default_name", "temp_voice", "اسم الروم الافتراضي ({username})", "🔊・{username}"),
+    _str("temp_voice_default_name", "temp_voice", "اسم الروم الافتراضي ({username}, {display_name}, {member})", "🔊・{display_name}'s Chamber"),
     _int("temp_voice_default_limit", "temp_voice", "حد الأعضاء الافتراضي (0 = بلا حد)", 0, 0, 99),
-    _int("temp_voice_delete_delay", "temp_voice", "ثواني قبل حذف الروم الفارغ", 0, 0, 600),
+    _int("temp_voice_delete_delay", "temp_voice", "ثواني قبل حذف الروم الفارغ", 5, 0, 600),
     _bool("temp_voice_panel_enabled", "temp_voice", "إرسال لوحة التحكم لمالك الروم", True),
     _bool("temp_voice_panel_staff_override", "temp_voice", "السماح للطاقم بالتحكم في أي روم", True),
+    _text("temp_voice_staff_alert", "temp_voice", "روم تنبيه الطاقم عند طلب المساعدة"),
+    _int("temp_voice_staff_call_cooldown", "temp_voice", "مهلة تكرار طلب الطاقم بالثواني", 60, 0, 3600),
+    SettingDef("temp_voice_banner", Kind.STR, "temp_voice", "رابط بانر لوحة الروم المؤقت", None),
 
     # ---- التذاكر ----
     _category("ticket_category", "tickets", "كاتيغوري التذاكر"),

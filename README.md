@@ -146,3 +146,19 @@ Phase 11 extends the Phase 10 Member XP tracker; it adds no XP table, voice-leve
 4. Start/restart the bot. It connects on Ready; a centralized maintenance loop handles disconnections with exponential backoff up to 15 minutes. Invalid channel/permission settings are logged once until changed and rechecked periodically.
 
 Permanent Voice is per guild and reuses the project's settings registry and central Voice log. It does not require Speak permission. Connection, restart, and actual Discord voice-gateway behavior must be checked in a live server; local mocked tests cannot establish Discord connectivity.
+
+## Phase 12 — Temporary Voice Rooms
+
+Temporary rooms reuse the existing guild configuration, database, centralized Voice logging, and Phase 10/11 Member Voice XP listener. A member joining the configured generator gets a private room in the configured category, is moved into it, and receives a persistent owner panel in that voice channel's integrated text chat. The panel contains Call Staff, Kick, Rename, User Limit, Lock, Unlock, Transfer Ownership, Ban, Give Access, and Remove Access. Empty rooms are deleted after a configurable grace period; when an owner leaves while others remain, ownership transfers to a room member.
+
+### Configure
+
+1. Create a voice channel for the generator and a category for temporary rooms.
+2. Configure them with `/config set-channel key:temp_voice_create_channel channel:#Create-Room` and `/config set-channel key:temp_voice_category channel:<Temporary Rooms>`.
+3. Optionally configure alerts with `/config set-channel key:temp_voice_staff_alert channel:#staff-alerts`.
+4. Optionally set the panel image using `/config set-value key:temp_voice_banner value:<HTTPS image URL>` and the room name with `/config set-value key:temp_voice_default_name value:🔊・{display_name}'s Chamber`.
+5. Review `/config view group:temp_voice`. `temp_voice_default_limit` defaults to 0 (unlimited), `temp_voice_delete_delay` to 5 seconds, and `temp_voice_staff_call_cooldown` to 60 seconds. Set the cooldown to 0 to disable it. Panel visibility and staff override are configurable there too.
+
+The bot needs Manage Channels and Move Members at guild level, plus View Channel, Connect, Send Messages, and Embed Links in the generator/category and generated rooms. It must be able to apply room overwrites (Manage Roles). Ensure configured staff roles are above the bot only when Discord hierarchy requires it. Staff override reuses the existing permission levels; it does not add Staff ranks or promotions.
+
+Room records and room-scoped bans/access are stored in the existing database. Startup recovery restores each existing room and its panel without creating new rooms. Temp Voice uses the existing Member Voice XP rules, so solo-room rewards and Verification/Jail exclusions remain unchanged. Local mocks can check bot-side behavior, but actual permission behavior, panel display, and XP accrual should also be confirmed in a Discord test server.

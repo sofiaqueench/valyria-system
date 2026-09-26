@@ -293,6 +293,12 @@ class LogEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
+        temp_voice_cog = self.bot.get_cog("TempVoiceCog")
+        if temp_voice_cog is not None:
+            try:
+                await temp_voice_cog.process_deleted_channel(channel)
+            except Exception:
+                logger.exception("Could not clean temporary voice data for deleted channel %s.", channel.id)
         leveling_cog = self.bot.get_cog("MemberLevelingCog")
         if leveling_cog is not None:
             try:
@@ -420,6 +426,12 @@ class LogEventsCog(commands.Cog):
     async def on_voice_state_update(
         self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState
     ):
+        temp_voice_cog = self.bot.get_cog("TempVoiceCog")
+        if temp_voice_cog is not None:
+            try:
+                await temp_voice_cog.process_voice_state_update(member, before, after)
+            except Exception:
+                logger.exception("Could not process temporary voice state for member %s.", member.id)
         # Reuse this existing voice-state event for Member Voice XP tracking.
         leveling_cog = self.bot.get_cog("MemberLevelingCog")
         if leveling_cog is not None:
