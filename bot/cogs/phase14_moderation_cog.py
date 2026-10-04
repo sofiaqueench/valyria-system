@@ -13,7 +13,8 @@ from bot.core.permissions import StaffLevel, get_staff_level, is_role_hierarchy_
 from bot.database.engine import async_session
 from bot.database.models.phase14 import ChannelLockState, ModerationAction
 from bot.services import config_service
-from bot.services.logging_service import LogEvent, LogType, send_log
+from bot.services.logging_service import LogEvent, LogType, SendResult, send_log
+from bot.services.member_xp_service import get_member_xp_mutation_lock
 
 _DURATION = re.compile(r"^(\d{1,5})(s|m|h|d)$", re.IGNORECASE)
 _MAX_TIMEOUT_SECONDS = 28 * 24 * 60 * 60
@@ -52,13 +53,81 @@ class Phase14ModerationCog(commands.Cog):
             return False
 
     async def _record(self, guild: discord.Guild, target_id: int, moderator: discord.abc.User,
-                      action: str, reason: str, duration: int | None = None) -> None:
+                      action: str, reason: str, duration: int | None = None,
+                      *, source: str = "Manual", message_id: int | None = None) -> None:
         async with async_session() as session:
             async with session.begin():
                 session.add(ModerationAction(
                     guild_id=guild.id, target_id=target_id, moderator_id=moderator.id,
                     action_type=action, reason=reason, duration_seconds=duration,
+                    source=source, message_id=message_id,
                 ))
+
+    async def automod_ban_member(
+        self, member: discord.Member, *, message_id: int, detected_word: str,
+        previous_warnings: int, message_deleted: bool,
+    ) -> bool:
+        """Apply an AutoMod threshold ban through the existing Phase 14 ban/log pathway."""
+        guild = member.guild
+        reason = "AutoMod: Member had 3 previous warnings and committed another prohibited-word violation."
+        bot_member = guild.me
+        can_ban = (
+            member.id != guild.owner_id
+            and bot_member is not None
+            and bot_member.guild_permissions.ban_members
+            and bot_member.top_role > member.top_role
+        )
+        dm_ok = False
+        if can_ban:
+            try:
+                await member.send(
+                    "Your message was removed because it contained a prohibited word.\n\n"
+                    "You previously received 3 warnings.\nThis was your 4th violation.\n"
+                    f"You have therefore been banned from {guild.name}.\n\nReason: {reason}"
+                )
+                dm_ok = True
+            except (discord.Forbidden, discord.HTTPException):
+                logger.warning("AutoMod ban DM failed for member %s in guild %s", member.id, guild.id)
+        failure: str | None = None
+        if not can_ban:
+            failure = "The bot lacks Ban Members permission, is below the target role, or cannot ban the server owner."
+        else:
+            try:
+                await member.ban(reason=reason, delete_message_seconds=0)
+            except discord.Forbidden:
+                failure = "Discord denied the AutoMod ban; check the bot's Ban Members permission and role hierarchy."
+            except discord.HTTPException as exc:
+                failure = f"Discord could not complete the AutoMod ban ({exc.code})."
+                logger.exception("AutoMod ban failed for member %s in guild %s", member.id, guild.id)
+
+        async with async_session() as session:
+            async with session.begin():
+                action = await session.scalar(select(ModerationAction).where(
+                    ModerationAction.guild_id == guild.id,
+                    ModerationAction.message_id == message_id,
+                ))
+                if action is not None:
+                    action.action_type = "automod_ban_failed" if failure else "ban"
+
+        fields = [
+            ("Source", "AutoMod", True), ("Previous warning count", str(previous_warnings), True),
+            ("Violation number", "4", True), ("Detected rule", detected_word, True),
+            ("Message deleted", "Yes" if message_deleted else "No — permission/API failure", True),
+            ("Ban DM", "Sent" if dm_ok else "Failed / unavailable", True),
+        ]
+        event = LogEvent(
+            LogType.AUTOMOD, "🚫 AutoMod Ban Failed" if failure else "🔨 AutoMod Ban",
+            target=member, staff=self.bot.user, reason=reason,
+            fields=fields + ([ ("Failure", failure, False) ] if failure else []),
+            ids={"Guild ID": guild.id, "Message ID": message_id},
+        )
+        result = await send_log(guild, event)
+        if result is not SendResult.SENT:
+            await send_log(guild, LogEvent(
+                LogType.MODERATION, event.title, target=member, staff=self.bot.user,
+                reason=reason, fields=event.fields, ids=event.ids,
+            ))
+        return failure is None
 
     async def _log(self, interaction: discord.Interaction, action: str, target: discord.abc.User | None,
                    reason: str, *, target_id: int | None = None, duration: str | None = None,
@@ -163,10 +232,11 @@ class Phase14ModerationCog(commands.Cog):
         if failure:
             return await interaction.response.send_message(f"❌ {failure}", ephemeral=True)
         await interaction.response.defer(ephemeral=True, thinking=True)
-        dm_ok = await self._dm(user, title=f"⚠️ You have received a warning in {interaction.guild.name}",
-                               guild_name=interaction.guild.name, reason=reason,
-                               moderator=interaction.user.display_name, action="Warning")
-        await self._record(interaction.guild, user.id, interaction.user, "warn", reason)
+        async with get_member_xp_mutation_lock(interaction.guild.id, user.id):
+            dm_ok = await self._dm(user, title=f"⚠️ You have received a warning in {interaction.guild.name}",
+                                   guild_name=interaction.guild.name, reason=reason,
+                                   moderator=interaction.user.display_name, action="Warning")
+            await self._record(interaction.guild, user.id, interaction.user, "warn", reason)
         await self._log(interaction, "Warn", user, reason, dm_ok=dm_ok)
         await interaction.followup.send(f"✅ Warned {user.mention}. DM {'sent' if dm_ok else 'could not be sent'}.", ephemeral=True)
 

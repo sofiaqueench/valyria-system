@@ -22,7 +22,7 @@ DEFAULT_DATABASE_URL = f"sqlite+aiosqlite:///{(PROJECT_ROOT / 'bot_database.db')
 @dataclass
 class Settings:
     discord_token: str
-    guild_id: int | None
+    guild_id: int
     database_url: str
 
 
@@ -34,7 +34,14 @@ def load_settings() -> Settings:
         )
 
     guild_id_raw = os.getenv("GUILD_ID")
-    guild_id = int(guild_id_raw) if guild_id_raw else None
+    if not guild_id_raw:
+        raise RuntimeError("GUILD_ID is missing from .env — set the development server ID before starting the bot.")
+    try:
+        guild_id = int(guild_id_raw)
+    except ValueError as exc:
+        raise RuntimeError("GUILD_ID must contain a numeric Discord server ID.") from exc
+    if guild_id <= 0:
+        raise RuntimeError("GUILD_ID must be a positive Discord server ID.")
 
     database_url = os.getenv("DATABASE_URL") or DEFAULT_DATABASE_URL
 

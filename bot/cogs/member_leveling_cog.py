@@ -12,6 +12,8 @@ from discord.ext import commands, tasks
 from bot.core.logger import logger
 from bot.core.permissions import StaffLevel, requires_level
 from bot.services import config_service
+from bot.services.automod_service import process_automod_message
+from bot.services.antispam_service import process_antispam_message
 from bot.services.level_progression_service import get_current_level_role
 from bot.services.logging_service import LogEvent, LogType, send_log
 from bot.services.member_xp_service import (
@@ -47,7 +49,7 @@ class MemberLevelingCog(commands.Cog):
     def cog_unload(self):
         self.voice_xp_tick.cancel()
 
-    # No other message XP listener exists in this project.
+    # AutoMod is processed here before message XP, keeping a single normal member pipeline.
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if (
@@ -61,9 +63,30 @@ class MemberLevelingCog(commands.Cog):
         if not (message.content.strip() or message.attachments or message.stickers):
             return
         try:
+            if await process_antispam_message(message, self.bot):
+                return
+        except Exception:
+            logger.exception("Anti-Spam processing failed for message %s", message.id)
+        try:
+            if await process_automod_message(message, self.bot):
+                return
+        except Exception:
+            logger.exception("AutoMod processing failed for message %s; skipping its Member XP award.", message.id)
+            return
+        jail_role_id = await config_service.get_setting(message.guild.id, "role_jail")
+        if jail_role_id and any(role.id == jail_role_id for role in message.author.roles):
+            return
+        try:
             await award_message_xp(message.author, source_channel=message.channel)
         except Exception:
             logger.exception("Message XP failed for member %s in guild %s.", message.author.id, message.guild.id)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Release transient voice XP state when a member leaves the guild."""
+        key = (member.guild.id, member.id)
+        self._voice_sessions.pop(key, None)
+        self._voice_remainders.pop(key, None)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -130,6 +153,9 @@ class MemberLevelingCog(commands.Cog):
             await config_service.get_setting(guild.id, "verification_voice"),
         }
         if channel.id in excluded_ids:
+            return False
+        jail_role_id = await config_service.get_setting(guild.id, "role_jail")
+        if jail_role_id and any(role.id == jail_role_id for role in member.roles):
             return False
         if await config_service.get_setting(guild.id, "voice_xp_ignore_deafened") and (state.deaf or state.self_deaf):
             return False

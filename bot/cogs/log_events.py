@@ -4,6 +4,7 @@
 يحتوي أيضًا أمر /logs test لاختبار الرومات.
 """
 import asyncio
+from dataclasses import replace
 
 import discord
 from discord import app_commands
@@ -285,11 +286,13 @@ class LogEventsCog(commands.Cog):
         if status != "found":
             fields.append(("Created by", "Unknown — no matching Audit Log entry (or no permission).", False))
 
-        await send_log(channel.guild, LogEvent(
+        event = LogEvent(
             LogType.CHANNEL, "➕ Channel Created",
             staff=executor if status == "found" else None,
             fields=fields, ids={"Channel ID": channel.id},
-        ))
+        )
+        await send_log(channel.guild, event)
+        await self._send_security_copy(channel.guild, event)
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
@@ -319,11 +322,39 @@ class LogEventsCog(commands.Cog):
         if status != "found":
             fields.append(("Deleted by", "Unknown — no matching Audit Log entry (or no permission).", False))
 
-        await send_log(channel.guild, LogEvent(
+        event = LogEvent(
             LogType.CHANNEL, "🗑️ Channel Deleted",
             staff=executor if status == "found" else None,
             fields=fields, ids={"Channel ID": channel.id},
-        ))
+        )
+        await send_log(channel.guild, event)
+        await self._send_security_copy(channel.guild, event)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
+        fields: list[tuple[str, str, bool]] = []
+        if before.name != after.name:
+            fields.append(("Name", f"`{before.name}` → `{after.name}`", False))
+        if before.category_id != after.category_id:
+            fields.append(("Category", f"{before.category_id} → {after.category_id}", True))
+        if before.overwrites != after.overwrites:
+            fields.append(("Permission overwrites", "Channel permissions changed.", False))
+        for attr in ("slowmode_delay", "nsfw", "bitrate", "user_limit"):
+            old, new = getattr(before, attr, None), getattr(after, attr, None)
+            if old is not None and old != new:
+                fields.append((attr.replace("_", " ").title(), f"{old} → {new}", True))
+        if not fields:
+            return
+        await asyncio.sleep(AUDIT_DELAY)
+        executor, status = await find_audit_executor(
+            after.guild, discord.AuditLogAction.channel_update, after.id,
+        )
+        if status != "found":
+            fields.append(("Changed by", "Unknown — no matching Audit Log entry (or no permission).", False))
+        event = LogEvent(LogType.CHANNEL, "✏️ Channel Updated", staff=executor if status == "found" else None,
+            fields=fields, ids={"Channel ID": after.id})
+        await send_log(after.guild, event)
+        await self._send_security_copy(after.guild, event)
 
     @staticmethod
     def _describe_channel_type(channel: discord.abc.GuildChannel) -> str:
@@ -346,11 +377,13 @@ class LogEventsCog(commands.Cog):
         if status != "found":
             fields.append(("Created by", "Unknown — no matching Audit Log entry (or no permission).", False))
 
-        await send_log(role.guild, LogEvent(
+        event = LogEvent(
             LogType.ROLE, "➕ Role Created",
             staff=executor if status == "found" else None,
             fields=fields, ids={"Role ID": role.id},
-        ))
+        )
+        await send_log(role.guild, event)
+        await self._send_security_copy(role.guild, event)
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role):
@@ -367,11 +400,13 @@ class LogEventsCog(commands.Cog):
         if status != "found":
             fields.append(("Deleted by", "Unknown — no matching Audit Log entry (or no permission).", False))
 
-        await send_log(role.guild, LogEvent(
+        event = LogEvent(
             LogType.ROLE, "🗑️ Role Deleted",
             staff=executor if status == "found" else None,
             fields=fields, ids={"Role ID": role.id},
-        ))
+        )
+        await send_log(role.guild, event)
+        await self._send_security_copy(role.guild, event)
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
@@ -411,11 +446,13 @@ class LogEventsCog(commands.Cog):
         if status != "found":
             fields.append(("Changed by", "Unknown — no matching Audit Log entry (or no permission).", False))
 
-        await send_log(after.guild, LogEvent(
+        event = LogEvent(
             LogType.ROLE, "✏️ Role Updated",
             staff=executor if status == "found" else None,
             fields=fields, ids={"Role ID": after.id},
-        ))
+        )
+        await send_log(after.guild, event)
+        await self._send_security_copy(after.guild, event)
 
     @staticmethod
     def _describe_color(color: discord.Color) -> str:
@@ -500,6 +537,14 @@ class LogEventsCog(commands.Cog):
             LogType.MEMBER, title, user=member, staff=staff, fields=fields,
             ids={"User ID": member.id},
         ))
+
+    @staticmethod
+    async def _send_security_copy(guild: discord.Guild, event: LogEvent) -> None:
+        """Mirror existing role/channel audit entries to the central Security destination."""
+        security_channel_id = await get_setting(guild.id, LogType.SECURITY.value)
+        if security_channel_id and security_channel_id == await get_setting(guild.id, event.log_type.value):
+            return
+        await send_log(guild, replace(event, log_type=LogType.SECURITY))
 
 
     @logs.command(name="test", description="يرسل رسالة تجريبية لكل رومات السجلات المضبوطة")

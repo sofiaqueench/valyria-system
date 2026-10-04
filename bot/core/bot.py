@@ -1,6 +1,9 @@
 """
 الكلاس الرئيسي للبوت. مسؤول فقط عن الاتصال وتحميل الـ Cogs — لا منطق أعمال هنا.
 """
+import importlib
+import pkgutil
+
 import discord
 from discord.ext import commands
 
@@ -15,8 +18,10 @@ class DiscordBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True
+        intents.presences = True
         intents.message_content = True
         intents.invites = True
+        intents.moderation = True
 
         # max_messages: عدد الرسائل التي يحفظها البوت في الذاكرة. كلما زاد، زادت فرصة عرض
         # محتوى الرسالة المحذوفة في السجلات (الافتراضي 1000).
@@ -29,31 +34,30 @@ class DiscordBot(commands.Bot):
 
         self.tree.on_error = handle_app_command_error  # معالج أخطاء موحّد لكل أوامر Slash
 
-        await self.load_extension("bot.cogs.ping_cog")
-        await self.load_extension("bot.cogs.config_cog")
-        await self.load_extension("bot.cogs.invite_cog")
-        await self.load_extension("bot.cogs.staff_xp_cog")
-        await self.load_extension("bot.cogs.staff_games_cog")
-        await self.load_extension("bot.cogs.member_leveling_cog")
-        await self.load_extension("bot.cogs.permanent_voice_cog")
-        await self.load_extension("bot.cogs.temp_voice_cog")
-        await self.load_extension("bot.cogs.log_events")
-        await self.load_extension("bot.cogs.permissions_cog")
-        await self.load_extension("bot.cogs.verification_cog")
-        await self.load_extension("bot.cogs.welcome_cog")
-        await self.load_extension("bot.cogs.phase14_moderation_cog")
-        await self.load_extension("bot.cogs.phase14_reactions_cog")
-        await self.load_extension("bot.cogs.game_cleanup_cog")
-        logger.info("تم تحميل جميع الـ Cogs بنجاح.")
+        cogs_package = importlib.import_module("bot.cogs")
+        extensions = sorted(
+            f"{cogs_package.__name__}.{module.name}"
+            for module in pkgutil.iter_modules(cogs_package.__path__)
+            if not module.ispkg and not module.name.startswith("_")
+        )
+        for extension in extensions:
+            try:
+                await self.load_extension(extension)
+            except commands.ExtensionError:
+                logger.exception("تعذر تحميل الامتداد %s.", extension)
+                raise
+        logger.info("تم تحميل %s امتدادًا تلقائيًا.", len(extensions))
 
-        if settings.guild_id:
-            guild = discord.Object(id=settings.guild_id)
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-            logger.info(f"تمت مزامنة {len(synced)} أمر(أوامر) مع السيرفر التجريبي.")
-        else:
-            synced = await self.tree.sync()
-            logger.info(f"تمت مزامنة {len(synced)} أمر(أوامر) عالميًا.")
+        command_names = [command.qualified_name for command in self.tree.walk_commands()]
+        duplicates = sorted({name for name in command_names if command_names.count(name) > 1})
+        if duplicates:
+            raise RuntimeError(f"Duplicate slash command registration detected: {', '.join(duplicates)}")
+        logger.info("تم التحقق من عدم تكرار أوامر Slash (%s أمرًا).", len(command_names))
+
+        guild = discord.Object(id=settings.guild_id)
+        self.tree.copy_global_to(guild=guild)
+        synced = await self.tree.sync(guild=guild)
+        logger.info("تمت مزامنة %s أمر(أوامر) مع السيرفر %s.", len(synced), settings.guild_id)
 
     async def on_ready(self):
         logger.info(f"البوت متصل الآن باسم {self.user} (ID: {self.user.id})")

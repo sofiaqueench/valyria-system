@@ -256,3 +256,45 @@ The panel buttons let a member restore only their own saved nickname, remove onl
 - [ ] Test role-based reactions with matching, nonmatching, and bot authors.
 - [ ] Save a game nickname, restore it from the panel, and verify only configured Game/Self roles can be removed.
 - [ ] Run the Phase 10, 11, 12, 13, and 13.5 checklists above after deployment.
+
+## Phase 15 — AutoMod prohibited-word filter
+
+AutoMod is integrated into the existing Member XP message listener. Configuration and the forbidden-word list are guild-scoped and stored through the existing `guild_settings` configuration service. Matching is case-insensitive and uses word boundaries for word-like entries. Bot, webhook, system, and prefix-command messages are ignored.
+
+Only members at the configured Admin level (or the guild owner/Discord administrator) can manage AutoMod:
+
+```text
+/automod enable
+/automod disable
+/automod word-add word:<word>
+/automod word-remove word:<word>
+/automod word-list
+/automod word-clear
+/automod set-xp-penalty amount:<amount>
+/automod set-log-channel channel:<channel>
+/automod status
+```
+
+Each of the first three violations uses the existing moderation warning records and subtracts the configured amount from normal Member XP (default 100; the balance cannot go below zero). Changes are written to `member_xp_history` with source `automod_warn`. The fourth violation skips a fourth warning and XP penalty and attempts a ban through the existing moderation cog. AutoMod logs use the configured AutoMod channel, then fall back to the central moderation log. A message ID uniqueness constraint prevents duplicate warning, XP, or ban processing.
+
+The bot applies migration `0010_automod` automatically at startup. It adds the normal Member XP history ledger and source/message fields to moderation records; it does not add a separate warning or XP system.
+
+### Phase 15 validation
+
+The repository includes an isolated validator. It uses a temporary SQLite database and a placeholder token; it does not connect to Discord or touch the configured bot database:
+
+```powershell
+python phase15_validate.py
+```
+
+It checks case-insensitive word matching, guild isolation, bot/normal-message exclusions, the three-warning then fourth-violation ban flow, XP floor/history isolation, duplicate-event protection, database migration, and slash-command registration. Live Discord checks still require a test server, the Message Content intent, suitable bot permissions/role hierarchy, and configuration of `/config set-channel key:automod_log_channel channel:#automod-logs` (optionally also `log_moderation` as fallback).
+
+## Phase 20 — Testing and Optimization
+
+Run the offline regression/smoke validator with the project's Python environment:
+
+```powershell
+python phase20_validate.py
+```
+
+It uses a temporary SQLite database and dry-runs slash-command sync without logging in to Discord. It checks the configured Guild ID, migration head, extension/command loading, the existing shared message listeners, Anti-Spam detectors and guild-scoped state, Anti-Raid state persistence and alert throttling, Clean's recent/older-message deletion paths, and cleanup of transient XP/voice state. It does not access the configured bot database. Continue to run `python phase15_validate.py` for the earlier AutoMod regression checks.

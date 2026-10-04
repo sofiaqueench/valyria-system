@@ -5,17 +5,19 @@ import asyncio
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from weakref import WeakValueDictionary
 
 import discord
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.core.logger import logger
 from bot.database.engine import async_session
-from bot.database.models.member_xp import MemberXP
+from bot.database.models.member_xp import MemberXP, MemberXPHistory
 from bot.services import config_service
 
 XP_PER_LEVEL = 100
-_locks: dict[tuple[int, int], asyncio.Lock] = {}
+_locks: WeakValueDictionary[tuple[int, int], asyncio.Lock] = WeakValueDictionary()
 
 
 @dataclass(frozen=True)
@@ -38,7 +40,60 @@ def calculate_level(total_xp: int) -> int:
 
 def _lock(guild_id: int, member_id: int) -> asyncio.Lock:
     key = (guild_id, member_id)
-    return _locks.setdefault(key, asyncio.Lock())
+    lock = _locks.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _locks[key] = lock
+    return lock
+
+
+def get_member_xp_mutation_lock(guild_id: int, member_id: int) -> asyncio.Lock:
+    """Shared lock for atomic XP changes outside ordinary awards (such as AutoMod)."""
+    return _lock(guild_id, member_id)
+
+
+async def apply_member_xp_delta_in_session(
+    session: AsyncSession,
+    member: discord.Member,
+    amount: int,
+    *,
+    source: str,
+    event_id: int,
+    reason: str,
+) -> MemberXPResult | None:
+    """Apply one idempotent normal Member XP change inside the caller's transaction."""
+    guild_id, member_id = member.guild.id, member.id
+    existing = await session.scalar(select(MemberXPHistory).where(
+        MemberXPHistory.guild_id == guild_id, MemberXPHistory.event_id == event_id,
+    ))
+    if existing is not None:
+        return None
+    row = await session.get(MemberXP, (guild_id, member_id))
+    if row is None:
+        row = MemberXP(guild_id=guild_id, member_id=member_id, total_xp=0)
+        session.add(row)
+        await session.flush()
+    old_total = row.total_xp
+    new_total = max(0, old_total + amount)
+    applied = new_total - old_total
+    row.total_xp = new_total
+    session.add(MemberXPHistory(
+        guild_id=guild_id, member_id=member_id, source=source,
+        amount=applied, total_after=new_total, event_id=event_id, reason=reason,
+    ))
+    return MemberXPResult(old_total, new_total, applied,
+                          calculate_level(old_total), calculate_level(new_total))
+
+
+async def process_member_xp_change(
+    member: discord.Member, result: MemberXPResult, *, source_channel: discord.abc.Messageable | None = None,
+) -> None:
+    """Run the same Level Role/announcement processing used by ordinary Member XP."""
+    try:
+        from bot.services.level_progression_service import process_level_progression
+        await process_level_progression(member, result, source_channel=source_channel)
+    except Exception:
+        logger.exception("Could not process Member XP change for %s in guild %s.", member.id, member.guild.id)
 
 
 def _as_utc(value: datetime) -> datetime:

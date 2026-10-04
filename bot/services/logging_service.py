@@ -34,6 +34,7 @@ class LogType(str, Enum):
     MEMBER = "log_member"
     VERIFICATION = "log_verification"
     MODERATION = "log_moderation"
+    AUTOMOD = "automod_log_channel"
     TICKET = "log_ticket"
     VOICE = "log_voice"
     INVITE = "log_invite"
@@ -54,6 +55,7 @@ _COLORS = {
     LogType.MEMBER: 0x3498DB,
     LogType.VERIFICATION: 0x2ECC71,
     LogType.MODERATION: 0xE67E22,
+    LogType.AUTOMOD: 0xE74C3C,
     LogType.TICKET: 0x9B59B6,
     LogType.VOICE: 0x1ABC9C,
     LogType.INVITE: 0x5865F2,

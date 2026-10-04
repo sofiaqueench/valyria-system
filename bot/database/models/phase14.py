@@ -9,6 +9,7 @@ from bot.database.engine import Base
 
 class ModerationAction(Base):
     __tablename__ = "moderation_actions"
+    __table_args__ = (UniqueConstraint("guild_id", "message_id", name="uq_moderation_action_guild_message"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     guild_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("guilds.guild_id", ondelete="CASCADE"), nullable=False)
     target_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -16,6 +17,8 @@ class ModerationAction(Base):
     action_type: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="Manual", server_default="Manual")
+    message_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
@@ -47,10 +50,11 @@ class ReactionRoleMapping(Base):
 
 class RoleReactionRule(Base):
     __tablename__ = "role_reaction_rules"
-    __table_args__ = (UniqueConstraint("guild_id", "role_id", name="uq_role_reaction_rule"),)
+    __table_args__ = (UniqueConstraint("guild_id", "channel_id", "role_id", name="uq_role_reaction_rule"),)
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     guild_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("guilds.guild_id", ondelete="CASCADE"), nullable=False)
     role_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     emoji_display: Mapped[str] = mapped_column(String(128), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
